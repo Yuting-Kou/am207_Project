@@ -1,6 +1,8 @@
 # Meeting summary 
 Group member: Yuting Kou, Yiming Xu, Yizhou Wang, Ziyi Zhou
+
 Project TF: Shu Xu
+
 paper: Subspace Inference for Bayesian Deep Learning
 
 ## Paper Content
