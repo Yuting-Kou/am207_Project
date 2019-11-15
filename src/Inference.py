@@ -1,7 +1,7 @@
 from autograd import numpy as np
 from autograd import grad
 import autograd.numpy.random as npr
-from autograd.misc.optimizers import adam, sgd
+from autograd.misc.optimizers import adam
 from abc import ABC
 
 
@@ -79,7 +79,9 @@ class BBB(Inference):
         self.Sigma_W = Sigma_W
         self.Sigma_W_inv = np.linalg.inv(self.Sigma_W)
         self.Sigma_W_det = np.linalg.det(self.Sigma_W)
+        self.log_lklhd = log_lklhd
         self.log_prior = lambda W: log_prior(W, Sigma_W_det=self.Sigma_W_det, Sigma_W_inv=self.Sigma_W_inv, D=self.D)
+        self.log_density = lambda W, t: log_lklhd(W) + self.log_prior(W)
 
         if tune_params is None:
             self.tune_params = {'step_size': 0.1,
@@ -91,7 +93,7 @@ class BBB(Inference):
         else:
             self.tune_params = tune_params
 
-    def variational_inference(self, log_lklhd, S=None, max_iteration=None, step_size=None,
+    def variational_inference(self, S=None, max_iteration=None, step_size=None,
                               verbose=None, init_mean=None, init_log_std=None):
         '''implements wrapper for variational inference via bbb for bayesian regression'''
 
@@ -109,7 +111,6 @@ class BBB(Inference):
         if init_log_std is not None:
             self.tune_params['init_log_std'] = init_log_std
 
-        self.log_density = lambda W, t: log_lklhd(W) + self.log_prior(W)
 
         # build variational objective.
         objective, gradient, unpack_params = self.black_box_variational_inference()
@@ -260,7 +261,7 @@ class HMC(Inference):
 
         return position_proposal, momentum_proposal
 
-    def hmc(self, position_current):
+    def hmc(self, position_current, momentum_current):
         # Refresh momentum
         momentum_current = self.sample_momentum(1)
 
