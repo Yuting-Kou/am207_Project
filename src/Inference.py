@@ -7,19 +7,26 @@ from abc import ABC
 
 class Inference(ABC):
     """ An inference instance which has inference method and get_posterior methods."""
+    submethods = {}
 
-    def __init__(self, D, Sigma_W):
-        """
-        - D: dimension of weights
-        - Sigma_W: prior variance of weights
-        """
-        self.D = D
-        self.Sigma_W = Sigma_W
-        self.Sigma_W_inv = np.linalg.inv(self.Sigma_W)
-        self.Sigma_W_det = np.linalg.det(self.Sigma_W)
+    @classmethod
+    def register_submethods(cls, variational_type):
+        def decorator(subclass):
+            cls.submethods[variational_type] = subclass
+            return subclass
+        return decorator
+
+    def __init__(self):
+       pass
 
     def get_posterior(self, n_samples):
         pass
+
+    @classmethod
+    def create(cls, submethod, **kwargs):
+        if submethod not in cls.submethods:
+            raise ValueError('Not implemented inference method: {}'.format(submethod))
+        return cls.submethods[submethod](**kwargs)
 
 
 def log_prior(W, Sigma_W_det, Sigma_W_inv, D):
@@ -39,7 +46,7 @@ def log_prior(W, Sigma_W_det, Sigma_W_inv, D):
     log_p_W = constant_W + exponential_W
     return log_p_W
 
-
+@Inference.register_submethods('BBB')
 class BBB(Inference):
     """
     Implement BBVI using https://github.com/HIPS/autograd/blob/master/examples/black_box_svi.py
@@ -79,6 +86,7 @@ class BBB(Inference):
         self.Sigma_W = Sigma_W
         self.Sigma_W_inv = np.linalg.inv(self.Sigma_W)
         self.Sigma_W_det = np.linalg.det(self.Sigma_W)
+
         self.log_lklhd = log_lklhd
         self.log_prior = lambda W: log_prior(W, Sigma_W_det=self.Sigma_W_det, Sigma_W_inv=self.Sigma_W_inv, D=self.D)
         self.log_density = lambda W, t: log_lklhd(W) + self.log_prior(W)
@@ -163,7 +171,7 @@ class BBB(Inference):
         posterior_samples = np.random.multivariate_normal(var_means, var_variance, size=n_samples)
         return posterior_samples
 
-
+@Inference.register_submethods('HMC')
 class HMC(Inference):
     """
     Implement HMC using hw7 solutions.
@@ -210,6 +218,7 @@ class HMC(Inference):
         self.Sigma_W = Sigma_W
         self.Sigma_W_inv = np.linalg.inv(self.Sigma_W)
         self.Sigma_W_det = np.linalg.det(self.Sigma_W)
+
         self.log_prior = lambda W: log_prior(W, Sigma_W_det=self.Sigma_W_det, Sigma_W_inv=self.Sigma_W_inv, D=self.D)
 
         self.potential_energy = lambda W: -1 * (log_lklhd(W) + self.log_prior(W))[0]
