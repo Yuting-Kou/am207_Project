@@ -40,5 +40,8 @@ class RandomSpace(Subspace):
         self.n_parameters = n_parameters
         self.subspace = np.random.randn(n_subspace, n_parameters)
 
+    def collect_vector(self, vector):
+        pass
+
     def get_space(self):
         return self.subspace
