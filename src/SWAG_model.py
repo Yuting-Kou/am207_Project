@@ -17,3 +17,11 @@ class SWAG:
         self.num_parameter = self.model.count_params()  # keras model
         subspace_kwargs = dict() if subspace_kwargs is None else subspace_kwargs
         self.subspace = Subspace.create(subspace_type, n_parameters=self.num_parameter, **subspace_kwargs)
+
+
+        ### not sure to implement Inference inside SWAG
+        # self.inference = Inference.create(inference_type, )
+        # likelihood:
+        #   W ~ N :-> reduced z
+        #   X ~ nn(W) -> nn(z) or w ~ f(z)
+        #   y ~ N(X)
