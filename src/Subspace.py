@@ -34,11 +34,14 @@ class RandomSpace(Subspace):
     def __init__(self, n_parameters, n_subspace=20):
         """
         Initialize random subspace method
-        :param n_parameters: # of dimension of low_dim representation
-        :param n_subspace: original weight space
+        :param n_parameters: # of dimension of original weight space
+        :param n_subspace: # of dimension of low_dim representation
         """
         self.n_parameters = n_parameters
         self.subspace = np.random.randn(n_subspace, n_parameters)
+
+    def collect_vector(self, vector):
+        pass
 
     def get_space(self):
         return self.subspace
