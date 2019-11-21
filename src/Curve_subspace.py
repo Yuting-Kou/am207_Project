@@ -11,6 +11,17 @@ from torch.nn.modules.utils import _pair
 class CurveSpace(Subspace):
     def __init__(self, net, loader, train_params, optimizer, criterion, n_parameters,
                  curve_net_gen, curve_params):
+        """
+        Generate basis of curve subspace
+        :param net: BaseNet
+        :param loader:
+        :param train_params: epochs
+        :param optimizer:
+        :param criterion:
+        :param n_parameters:
+        :param curve_net_gen: class of CurveNet
+        :param curve_params: epochs, sample_size
+        """
         self.net = net
         self.n_parameters = n_parameters
         self.train_params = train_params
@@ -96,6 +107,14 @@ class CurveSpace(Subspace):
 
 class Linear(nn.Module):
     def __init__(self, in_features, out_features, start_point, end_point, bias = True):
+        """
+        Linear layer with self-customized parameters
+        :param in_features:
+        :param out_features:
+        :param start_point: list of tensors
+        :param end_point: list of tensors
+        :param bias:
+        """
         super(Linear, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -123,7 +142,8 @@ class Linear(nn.Module):
     def forward(self, input, t):
         weight = getattr(self, 'weight')
         bias = getattr(self, 'bias')
-        p1, p2 = list(self.start_point.values()), list(self.end_point.values())
+        #p1, p2 = list(self.start_point.values()), list(self.end_point.values())
+        p1, p2 = self.start_point, self.end_point
         if t <= 0.5:
             weight_t = 2 * (t * weight + (0.5-t) * p1[0])
         else:
@@ -138,9 +158,23 @@ class Linear(nn.Module):
             bias_t = None
         return F.linear(input, weight_t, bias_t)
 
+
 class Conv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, start_point, end_point,
                  stride = 1, padding = 0, dilation = 1, groups = 1, bias = True):
+        """
+        Conv2d layer with self-customized parameters
+        :param in_channels:
+        :param out_channels:
+        :param kernel_size:
+        :param start_point: list of tensors
+        :param end_point: list of tensors
+        :param stride:
+        :param padding:
+        :param dilation:
+        :param groups:
+        :param bias:
+        """
         super(Conv2d, self).__init__()
         self.parameter_names = ('weight', 'bias')
 
@@ -167,7 +201,7 @@ class Conv2d(nn.Module):
         self.register_parameter(
             'weight',
             nn.Parameter(
-                torch.Tensor(out_channels, in_channels // group, *kernel_size)
+                torch.Tensor(out_channels, in_channels // groups, *kernel_size)
             )
         )
         if bias:
@@ -192,7 +226,8 @@ class Conv2d(nn.Module):
     def forward(self, input, t):
         weight = getattr(self, 'weight')
         bias = getattr(self, 'bias')
-        p1, p2 = list(self.start_point.values()), list(self.end_point.values())
+        #p1, p2 = list(self.start_point.values()), list(self.end_point.values())
+        p1, p2 = self.start_point, self.end_point
         if t <= 0.5:
             weight_t = 2 * (t * weight + (0.5 - t) * p1[0])
         else:
@@ -208,3 +243,17 @@ class Conv2d(nn.Module):
         return F.conv2d(input, weight_t, bias_t, self.stride,
                         self.padding, self.dilation, self.groups)
 
+
+"""Example curve net class"""
+class CurveNet(nn.Module):
+    def __init__(self, net, start_point, end_point):
+        super(CurveNet, self).__init__()
+        self.net = net
+        self.start_point = start_point
+        self.end_point = end_point
+
+    def forward(self, input, t = None):
+        if t is None:
+            t = input.data.new(1).uniform_()
+        output = self.net(input, t)
+        return output
