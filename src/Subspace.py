@@ -2,7 +2,7 @@ from abc import ABC
 from autograd import numpy as np
 # from sklearn.decomposition import TruncatedSVD
 from sklearn.utils.extmath import randomized_svd
-import Curve_subspace
+import CurveSubspace
 
 
 class Subspace(ABC):
