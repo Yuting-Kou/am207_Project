@@ -1,27 +1,34 @@
 """
-All three subspaces involves with SWAG method. Then we can construct a SWAG model to call subspace methods.
+Implement SWA model and return A and W_Swa
 """
-from .Subspace import Subspace
-from .Inference import Inference
+from .model import Model
 
 
 class SWAG:
-    def __init__(self, model, subspace_type, subspace_kwargs=None, *args, **kwargs):
+    def __init__(self, model):
         """
-
-        :param model: Bayesian Neural Network to be inferenced
-        :param subspace_type: 3 subspaces {'random', 'PCA', 'curve'}
-        :param subspace_kwargs: key words for subspaces
+        Implement Algo 2 of stochastic weight averaging (SWA)
+        :type model: Model
         """
         self.model = model
-        self.num_parameter = self.model.count_params()  # keras model
-        subspace_kwargs = dict() if subspace_kwargs is None else subspace_kwargs
-        self.subspace = Subspace.create(subspace_type, n_parameters=self.num_parameter, **subspace_kwargs)
+        self.A = None # deviation matrix
+        self.w_swa = None # final result of w_swa
+        pass
 
+    def train_SGD(self, X,y, method="T"):
+        """
+        train model using SGD, and record SGD deviation matrix, get final w_swa.
+        method: "T": every T step to record (default)
+        """
+        if method == "T":
+            ### this function is to update A and w_swa. get SGD updates.
+            self.A = None
+            self.w_swa = None
+        else:
+            raise NotImplementedError("method {} not implemented".format(method))
 
-        ### not sure to implement Inference inside SWAG
-        # self.inference = Inference.create(inference_type, )
-        # likelihood:
-        #   W ~ N :-> reduced z
-        #   X ~ nn(W) -> nn(z) or w ~ f(z)
-        #   y ~ N(X)
+    def get_A(self):
+        return self.A
+
+    def get_w_swa(self):
+        return self.w_swa
