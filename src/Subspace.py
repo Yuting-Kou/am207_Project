@@ -2,7 +2,7 @@ from abc import ABC
 from autograd import numpy as np
 # from sklearn.decomposition import TruncatedSVD
 from sklearn.utils.extmath import randomized_svd
-import CurveSubspace
+from util import initializer
 
 
 class Subspace(ABC):
@@ -25,25 +25,28 @@ class Subspace(ABC):
             raise ValueError('Not implemented subspaces type: {}'.format(subspace_type))
         return cls.subclasses[subspace_type](**kwargs)
 
-    def collect_vector(self, vector):
+    def collect_vector(self, X, y):
+        """Each method to construct their own vector based on data(X,y)"""
         pass
 
     def get_space(self):
+        """return transformed matrix P and shift vector w_hat"""
         pass
 
 
 @Subspace.register_subclass('random')
 class RandomSpace(Subspace):
-    def __init__(self, n_parameters, n_subspace=20):
+    def __init__(self, model, n_subspace=20):
         """
         Initialize random subspace method
-        :param n_parameters: # of dimension of original weight space
-        :param n_subspace: # of dimension of low_dim representation
+        :param model: model
+        :param n_subspace: # of dimension of low_dim representation (small)
         """
-        self.n_parameters = n_parameters
+        self.n_parameters = pass
         self.subspace = np.random.randn(n_subspace, n_parameters)
+        self.model = model
 
-    def collect_vector(self, vector):
+    def collect_vector(self, X, y):
         pass
 
     def get_space(self):
