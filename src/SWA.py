@@ -1,11 +1,12 @@
 """
 Implement SWA model and return A and W_Swa
 """
-from .model import Model
+from model import Model
+from autograd import numpy as np
 
 
-class SWAG:
-    def __init__(self, model):
+class SWA:
+    def __init__(self, model:Model):
         """
         Implement Algo 2 of stochastic weight averaging (SWA)
         :type model: Model
@@ -23,7 +24,7 @@ class SWAG:
         if method == "T":
             ### this function is to update A and w_swa. get SGD updates.
             self.A = None
-            self.w_swa = None
+            self.w_swa = np.zeros((self.model.get_D(),1))
         else:
             raise NotImplementedError("method {} not implemented".format(method))
 
