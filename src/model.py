@@ -23,6 +23,8 @@ class Model(ABC):
         self.weights = None
         pass
 
+
+
     def get_likelihood(self, X, z, P, w_hat):
         """
         reconstruct original weights from subspace weight z based on P and shift vector w_hat
