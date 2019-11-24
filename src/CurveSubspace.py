@@ -5,7 +5,7 @@ import numpy as np
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.modules.utils import _pair
-
+import util
 
 @Subspace.register_subclass('curve')
 class CurveSpace(Subspace):
@@ -34,40 +34,12 @@ class CurveSpace(Subspace):
         #self.curve_optimizer = curve_optimizer
 
     def get_endpoint(self):
-        def apply_weights_init(type):
-            def weights_init(m):
-                classname = m.__class__.__name__
-                if classname.find('Linear') != -1:
-                    n = m.in_features
-                    y = 1.0 / np.sqrt(n)
-                    if type == 0:
-                        m.weight.data.uniform_(-y, y)
-                    elif type == 1:
-                        m.weight.data.normal_(0.0, 1 / np.sqrt(y))
-                    m.bias.data.fill_(0)
-
-            return weights_init
-
         endpoint = []
+
         for i in range(2):
-            self.net.apply(apply_weights_init(i))
-            for epoch in range(self.train_params['epochs']):
-                running_loss = 0
-                for k, data in enumerate(self.loader, 0):
-                    X, y = data
-
-                    self.optimizer.zero_grad()
-                    outputs = self.net(X)
-                    loss = self.criterion(outputs, y)
-                    loss.backward()
-                    self.optimizer.step()
-
-                    running_loss += loss
-                    if k % 2000 == 1999:
-                        print('[%d, %5d] loss: %.3f' %
-                              (epoch + 1, k + 1, running_loss / 2000))
-                        running_loss = 0.0
-            endpoint.append(self.net.state_dict())
+            endpoint.append(util.get_initialization(i, self.net, self.loader,
+                                                    self.optimizer, self.criterion,
+                                                    self.train_params))
         return endpoint
 
     def get_midpoint(self, endpoint):
