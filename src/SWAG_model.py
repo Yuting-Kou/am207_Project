@@ -12,7 +12,7 @@ class SWAG:
         """
         self.model = model
         self.A = None # deviation matrix
-        self.w_swa = None # final result of w_swa
+        self.w_swa = None # final result of w_swa, shape is [n_parameters, 1] or [n_large, 1]
         pass
 
     def train_SGD(self, X,y, method="T"):

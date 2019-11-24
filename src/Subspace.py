@@ -1,8 +1,11 @@
 from abc import ABC
+
 from autograd import numpy as np
 # from sklearn.decomposition import TruncatedSVD
 from sklearn.utils.extmath import randomized_svd
-from util import initializer
+
+from .SWAG_model import SWAG
+from .model import Model
 
 
 class Subspace(ABC):
@@ -30,7 +33,10 @@ class Subspace(ABC):
         pass
 
     def get_space(self):
-        """return transformed matrix P and shift vector w_hat"""
+        """return transformed matrix P and shift vector w_hat
+            - P matrix: shape: (n_large, n_small)
+            - shift vector: (n_large, 1)
+        """
         pass
 
 
@@ -39,51 +45,64 @@ class RandomSpace(Subspace):
     def __init__(self, model, n_subspace=20):
         """
         Initialize random subspace method
-        :param model: model
         :param n_subspace: # of dimension of low_dim representation (small)
+        :type model: Model
+        :param model: model
         """
-        self.n_parameters = pass
-        self.subspace = np.random.randn(n_subspace, n_parameters)
+        self.n_parameters = len(model.get_weights())
+        self.subspace = np.random.randn(self.n_parameters, n_subspace)
         self.model = model
+        self.w_hat = np.zeros((self.n_parameters, 1))
 
-    def collect_vector(self, X, y):
-        pass
+    def collect_vector(self, X, y, method="T"):
+        """set shift vector as SWA results"""
+        myswag = SWAG(model=self.model)
+        myswag.train_SGD(X=X, y=y, method=method)
+        self.w_hat = myswag.get_w_swa()
 
     def get_space(self):
-        return self.subspace
+        """
+        :return:
+            subspace: projection matrix with shape [p_small, p_large]
+            w_hat: shift vectors = w_{SWA}
+        """
+        return self.subspace, self.w_hat
+
 
 @Subspace.register_subclass('pca')
 class PCASpace(Subspace):
-    def __init__(self, n_parameters, PCA_rank=20, max_rank = 20):
+    def __init__(self, model, PCA_rank=20, max_rank=20):
         """
         Initialize random subspace method
-        :param n_parameters: # of dimension of original weight space
+        :param model: # of dimension of original weight space
+        :type model: Model
         :param PCA_rank # of dimension of low_dim representation (K in paper's algorithm2)
         :param max_rank # of maximum columns in deviation matrix (M in paper's algorithm2)
         """
         super(PCASpace, self).__init__()
 
-        self.n_parameters = n_parameters
+        self.n_parameters = len(model.get_weights())
         self.PCA_rank = PCA_rank
         self.max_rank = max_rank
 
         self.rank = 1
-        self.deviation_matrix = np.ones(self.n_parameters).reshape(1,-1) # final shape should be (max_rank, n_parameters)
-    
+        # final shape should be (max_rank, n_parameters)
+        self.deviation_matrix = np.ones(self.n_parameters).reshape(1, -1)
+
     def collect_vector(self, vector):
-        if self.rank + 1 > self.max_rank: 
-            self.deviation_matrix = self.deviation_matrix[1:, :] # keep the last (max_rank - 1) deviations
-        self.deviation_matrix = np.concatenate([self.deviation_matrix, vector.reshape(1,-1)], axis = 0)
-        self.rank = min(self.rank + 1, self.max_rank) # update the matrix rank
+        if self.rank + 1 > self.max_rank:
+            self.deviation_matrix = self.deviation_matrix[1:, :]  # keep the last (max_rank - 1) deviations
+        self.deviation_matrix = np.concatenate([self.deviation_matrix, vector.reshape(1, -1)], axis=0)
+        self.rank = min(self.rank + 1, self.max_rank)  # update the matrix rank
 
     def get_space(self):
         deviation_matrix = self.deviation_matrix.copy()
 
-        # deviation_matrix /= (max(1, self.rank)-1)**0.5 
+        # deviation_matrix /= (max(1, self.rank)-1)**0.5
         # pca_rank = max(1, min(self.PCA_rank, self.rank))
         # pca_decomp = TruncatedSVD(n_components=self.PCA_rank)
         # pca_decomp.fit(deviation_matrix) # PCA based on randomized SVD
-        
-        _, s, Vt = randomized_svd(deviation_matrix, n_components = self.PCA_rank)
 
-        return s[:, None]*Vt
+        _, s, Vt = randomized_svd(deviation_matrix, n_components=self.PCA_rank)
+
+        return s[:, None] * Vt
