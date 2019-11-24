@@ -20,6 +20,7 @@ class Model(ABC):
 
     def __init__(self):
         """construct neural network"""
+        self.weights = None
         pass
 
     def get_likelihood(self, X, z, P, w_hat):
@@ -34,11 +35,16 @@ class Model(ABC):
         """
         pass
 
-    def get_weights(self):
+    def turn_weights(self):
         """
         get weights vector from pytorch neural network
         :return: a mutable vector of weights
         """
+        pass
+
+    def get_weights(self):
+        return self.weights
+
     def set_weights(self, new_weights):
         """
         update weights of current neural networks (put it into dictionary).
