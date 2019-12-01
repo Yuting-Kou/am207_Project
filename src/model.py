@@ -216,8 +216,8 @@ class Feedforward(Model):
         y_pred = self.forward(weights=weights.reshape(-1, self.D), x=X)
         # y_pred shape -1, D_out
         constant = -0.5 * (self.params['D_out'] * np.log(2 * np.pi)) + np.log(self.Sigma_Y_det)
-        exponential_Y = -0.5 * np.diag(
-            np.dot(np.dot((y - y_pred, self.Sigma_Y_inv), (y - y_pred).T))  ##### what is the mean? y_pred is mean.
+        exponential_Y = -0.5 * np.diag(np.dot(np.dot((y - y_pred, self.Sigma_Y_inv), (y - y_pred).T)))
+        ##### what is the mean? y_pred is mean.
         return constant + exponential_Y
 
     def make_objective(self, x_train, y_train, weights, return_grad=True, reg_param=None):
