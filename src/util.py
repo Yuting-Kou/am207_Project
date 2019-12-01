@@ -1,10 +1,13 @@
 import torch.nn as nn
 import torch
 import torch.optim as optim
-import numpy as np
+from autograd import numpy as np
+from model import Model
 
 
 def get_initialization(init_type, net, loader, optimizer, criterion, train_params):
+    """better to change net into model object
+    """
     def apply_weights_init(type):
         def weights_init(m):
             classname = m.__class__.__name__
@@ -37,3 +40,4 @@ def get_initialization(init_type, net, loader, optimizer, criterion, train_param
                       (epoch + 1, k + 1, running_loss / 2000))
                 running_loss = 0.0
     return net.state_dict()
+
