@@ -135,6 +135,6 @@ if __name__ == '__main__':
 
 
     z = np.random.randn(2,1)
-    print(my_nn.get_likelihood(X=x.reshape(1,-1), z=z, P=P, w_hat=w).shape)
+    print(my_nn.forward(X=x.reshape(1,-1), z=z, P=P, w_hat=w).shape)
 
 

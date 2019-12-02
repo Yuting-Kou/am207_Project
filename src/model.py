@@ -220,19 +220,18 @@ class Feedforward(Model):
         ##### what is the mean? y_pred is mean.
         return constant + exponential_Y
 
-    def make_objective(self, x_train, y_train, weights, return_grad=True, reg_param=None):
+    def make_objective(self, x_train, y_train, return_grad=True, reg_param=None):
         """
         return Mean Square Error of loss function and its gradient. Over original parameter space.
         :param x_train: input data X
         :param y_train: input predictor Y
-        :param weights: network parameters
         :param return_grad: whether or not to return gradiant
         :param reg_param: regularization coefficients
         :return: MSE loss of data, if return_grad=True then also return gradient.
         """
 
         def objective(W, t):
-            squared_error = np.linalg.norm(y_train - self.forward(X=x_train, use_subweights=True, weights=W),
+            squared_error = np.linalg.norm(y_train - self.forward(X=x_train, use_subweights=False, weights=W),
                                            axis=1) ** 2
             if reg_param is None:
                 sum_error = np.sum(squared_error)
