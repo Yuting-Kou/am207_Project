@@ -1,18 +1,16 @@
-from autograd import numpy as np
-from autograd import grad
-from autograd.misc.optimizers import adam
-
-import pandas as pd
-from src.Inference import HMC, BBB
-
 import matplotlib.pyplot as plt
+from autograd import numpy as np
+
+from src.Inference import Inference
+from src.Subspace import Subspace
 from src.model import Model
 
-
 if __name__ == '__main__':
-    data = pd.read_csv(r'C:\Users\Lenovo\Downloads\HW7_solutions\HW7_data.csv')
-    x = data['x'].values
-    y = data['y'].values
+    # test
+    # print("All possible models:{}".format(Model.modeltype))
+    data = np.load(r'.\example\data.npy')
+    # data = np.load('data.npy')
+    x, y = data[:, 0], data[:, 1]
 
     alpha = 1
     c = 0
@@ -31,128 +29,57 @@ if __name__ == '__main__':
                     'activation_fn_type': 'rbf',
                     'activation_fn_params': 'c=0, alpha=1',
                     'activation_fn': h}
-
     # set random state to make the experiments replicable
     rand_state = 127
     random = np.random.RandomState(rand_state)
 
-    # initialize with a MSE weights
-    nn = Model.create(submodel_type="Feedforward", architecture=architecture, random=random)
+    # ---------------- Core thing! ------------------ #
+    # set up model, subspace, inference
+    my_nn = Model.create(submodel_type="Feedforward", architecture=architecture)
+    my_subspace = Subspace.create(subspace_type="pca", model=my_nn, n_subspace=2)
+    my_subspace.collect_vector(X=x, y=y)
+    P, w = my_subspace.get_space()
+    my_inference = Inference.create(inference_type="HMC", model=my_nn, P=P, w_hat=w)
 
-    # change prior over the weights
-    weights = nn.random.normal(0, 5, size=(1, nn.D))
-    nn.weights = weights
-
-    # initialize with MLE
+    # use MSE result as params_init
     params = {'step_size': 1e-3,
-              'max_iteration': 2000,
+              'max_iteration': 5000,
               'random_restarts': 1}
 
     # fit my neural network to minimize MSE on the given data
-    nn.fit(x.reshape((1, -1)), y.reshape((1, -1)), params)
+    #my_nn.fit(x_train=x.reshape((1, -1)), y_train=y.reshape((1, -1)), params=params)
 
-    sigma_y = 0.5
-    N = len(x)
-    sigma_W = np.eye(nn.D) * 25
+    # get initial weights (in subspace dimension!!)
+    position_init = my_nn.get_z_from_W(weights=my_nn.weights, P=P, w_hat=w)
 
+    # train
+    my_inference.train(X=x, y=y, warm_start=True, position_init=position_init)
 
-    def log_lklhd(w, x=x, y=y):
-        assert len(w.shape) == 2 and w.shape[1] == nn.D
-        S = w.shape[0]
-        constant = (-np.log(sigma_y) - 0.5 * np.log(2 * np.pi)) * N
-        exponential = -0.5 * sigma_y ** -2 * np.sum((y.reshape((1, 1, N)) - nn.forward(w, x.reshape(1, -1))) ** 2,
-                                                    axis=2).flatten()
-        assert exponential.shape == (S,)
-        return constant + exponential
-
-
-    # test HMC
-    # instantiate an HMC sampler
-    position_init = nn.weights.reshape((1, nn.D))
-    # leap-frog step size
-    step_size = 1e-2
-    # leap-frog steps
-    leapfrog_steps = 20
-    # number of total samples after burn-in
-    total_samples = 1000
-    # percentage of samples to burn
-    burn_in = 0.1
-    # thinning factor
-    thinning_factor = 1
-
-    HMC_sampler = HMC(log_lklhd=log_lklhd, D=nn.D, Sigma_W=sigma_W, random=random)
-
-    # sample from the bayesian neural network posterior
-    HMC_sampler.sample(position_init=position_init,
-                       step_size=step_size,
-                       leapfrog_steps=leapfrog_steps,
-                       total_samples=total_samples,
-                       burn_in=burn_in,
-                       thinning_factor=thinning_factor)
-
-    # # visualize the traceplots for all of the 16 neural network parameters
-    # fig, ax = plt.subplots(4, 4, figsize=(20, 20))
-    # for i in range(nn.D):
-    #     row = i // 4
-    #     col = i % 4
-    #     ax[row, col].plot(range(total_samples), HMC_sampler.trace[:, i], color='gray', alpha=0.7)
-    # fig.suptitle('Trace plots for all neural network parameters | HMC', y=0.9)
-    # plt.show()
-
-    # test BBB
-    BBB_sampler = BBB(log_lklhd=log_lklhd, D=nn.D, Sigma_W=sigma_W, random=random)
-    BBB_sampler.variational_inference(step_size=5e-3,
-                                      S=2000, max_iteration=1000, init_mean=nn.weights.reshape(-1),
-                                      init_log_std=-10 * np.ones(nn.D))
-
-    # Visualization
-    n_sample = 100
-    BBB_post_sample = BBB_sampler.get_posterior(n_sample).reshape(-1, nn.D)
-    HMC_post_sample = HMC_sampler.get_posterior(n_sample).reshape(-1, nn.D)
+    # get posterior z
+    n_sample = 10
+    post_sample = my_inference.get_posterior(n_samples=n_sample).reshape(-1, 2)
     x_test = np.linspace(-8, 8, 100)
-    y_test_hmc = nn.forward(HMC_post_sample, x_test.reshape(1,-1)).reshape((n_sample, -1)) + np.random.normal(0, sigma_y ** 0.5,
-                                                                                                size=(
-                                                                                                    n_sample,
-                                                                                                    len(x_test)))
-    y_test_bbb = nn.forward(BBB_post_sample, x_test.reshape(1,-1)).reshape((n_sample, -1)) + np.random.normal(0, sigma_y ** 0.5,
-                                                                                                size=(
-                                                                                                    n_sample,
-                                                                                                    len(x_test)))
+    y_test = np.reshape([my_nn.forward(P=P, w_hat=w, z=post_sample[i],  X=x_test.reshape(1, -1)) for i in range(n_sample)], (n_sample, -1)) \
+             + np.random.normal(0, my_nn.Sigma_Y_det ** 0.5, size=(n_sample, len(x_test)))
+    # because here Sigma_Y is 1-D, so determinants=its value
 
-    plt.figure(figsize=(15, 10))
-    plt.subplot(2, 2, 1)
-    plt.scatter(x, y, color='black', label='data')
+    # plot
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1, 2, 1)
     plt.grid()
     plt.title('Posterior Predictive of Bayesian NN | HMC')
     plt.ylim(-15, 15)
     for i in range(n_sample):
-        plt.plot(x_test, y_test_hmc[i], color='red', alpha=0.2)
+        plt.plot(x_test, y_test[i], color='red', alpha=max(1/n_sample,0.1))
+    plt.scatter(x, y, color='black', label='data')
     plt.legend()
-    plt.subplot(2, 2, 2)
+    plt.subplot(1, 2, 2)
     plt.scatter(x, y, color='black')
-    plt.plot(x_test, y_test_hmc.mean(0), color='red', label='posterior predictive mean')
-    plt.fill_between(x_test, np.percentile(y_test_hmc, 0.25, axis=0), np.percentile(y_test_hmc, 97.5, axis=0),
+    plt.plot(x_test, y_test.mean(0), color='red', label='posterior predictive mean')
+    plt.fill_between(x_test, np.percentile(y_test, 0.25, axis=0), np.percentile(y_test, 97.5, axis=0),
                      color='red', label='95% CI', alpha=0.5)
     plt.legend(loc='best')
     plt.title('Posterior Predictive of Bayesian NN with 95% CI |HMC')
     plt.grid()
     plt.ylim(-15, 15)
-    plt.subplot(2, 2, 3)
-    plt.scatter(x, y, color='black', label='data')
-    plt.grid()
-    plt.title('Posterior Predictive of Bayesian NN | BBVI')
-    for i in range(100):
-        plt.plot(x_test, y_test_bbb[i], color='red', alpha=0.2)
-    plt.legend()
-    plt.ylim(-15, 15)
-    plt.subplot(2, 2, 4)
-    plt.scatter(x, y, color='black')
-    plt.plot(x_test, y_test_bbb.mean(0), color='red', label='posterior predictive mean')
-    plt.fill_between(x_test, np.percentile(y_test_bbb, 0.25, axis=0), np.percentile(y_test_bbb, 97.5, axis=0),
-                     color='red',
-                     label='95% CI', alpha=0.5)
-    plt.legend(loc='best')
-    plt.title('Posterior Predictive of Bayesian NN with 95% CI |BBVI')
-    plt.ylim(-15, 15)
-    plt.grid()
     plt.show()

@@ -2,6 +2,7 @@ from abc import ABC
 
 from autograd import grad
 from autograd import numpy as np
+from autograd.misc.optimizers import adam
 
 
 class Model(ABC):
@@ -25,6 +26,18 @@ class Model(ABC):
         """construct neural network"""
         self.weights = None
         self.D = None
+        pass
+
+    def fit(self, x_train, y_train, reg_param=None, params=None):
+        """
+        train MSE model
+        :param params= {'step_size' = 0.01,
+                        'max_iteration' = 5000,
+                        'check_point' = 100,
+                        'optimizer' = 'adam'
+                        'random_restarts' = 5
+                        }
+        """
         pass
 
     def forward(self, X, use_subweights=True, z=None, P=None, w_hat=None, weights=None):
@@ -61,9 +74,15 @@ class Model(ABC):
         assert w_hat is not None
 
         # W = w_hat + P@z
-        assert z.shape[0] == P.shape[-1]
+        z = z.reshape(P.shape[-1], -1)
         assert (P.shape[0], z.shape[1]) == w_hat.shape
         return w_hat + P @ z
+
+    def get_z_from_W(self, weights, P, w_hat):
+        """
+        return z: W=w_hat+P@z
+        """
+        return np.linalg.pinv(P) @ (weights.reshape(-1, 1) - w_hat.reshape(-1, 1))
 
     def vectorize_weights(self):
         """
@@ -87,22 +106,27 @@ class Model(ABC):
         """return # of dimension of original weight space. = n_parameters"""
         return self.D
 
-    def make_objective(self, x_train, y_train, weights, return_grad=True, reg_params=None):
+    def make_objective(self, x_train, y_train, return_grad=True, reg_params=None):
         """
         return Mean Square Error of loss function and its gradient.
         :param x_train: input data X
         :param y_train: input predictor Y
-        :param weights: network parameters
         :param return_grad: whether or not to return gradiant
         :param reg_params: whether to add regularization terms.
         :return: MSE loss of data, if return_grad=True then also return gradient.
         """
         pass
 
+    def update_Sigma_Y(self, Sigma_Y):
+        """
+        update Sigma_Y: Y~N(nn, Sigma_Y)
+        """
+        pass
+
 
 @Model.register_submodel('Feedforward')
 class Feedforward(Model):
-    def __init__(self, architecture, random=None, weights=None, y_var=None):
+    def __init__(self, architecture, random=None, weights=None, Sigma_Y=None):
         self.params = {'H': architecture['width'],
                        'L': architecture['hidden_layers'],
                        'D_in': architecture['input_dim'],
@@ -113,6 +137,8 @@ class Feedforward(Model):
         self.D = ((architecture['input_dim'] * architecture['width'] + architecture['width'])
                   + (architecture['output_dim'] * architecture['width'] + architecture['output_dim'])
                   + (architecture['hidden_layers'] - 1) * (architecture['width'] ** 2 + architecture['width']))
+        self.objective_trace = np.empty((1, 1))
+        self.weight_trace = np.empty((1, self.D))
 
         if random is not None:
             self.random = random
@@ -128,16 +154,20 @@ class Feedforward(Model):
             self.weights = weights
 
         # y variance is a matrix
-        if y_var is None:
-            self.y_var = np.eye(self.params['D_out'])
+        self.update_Sigma_Y(Sigma_Y=Sigma_Y)
+
+    def update_Sigma_Y(self, Sigma_Y):
+        """update Sigma Y"""
+        if Sigma_Y is None:
+            Sigma_Y = np.eye(self.params['D_out'])
         else:
-            if len(y_var.shape) > 1:
-                assert y_var.shape[0] == y_var.shape[1] == self.params['D_out']
+            if len(Sigma_Y.shape) > 1:
+                assert Sigma_Y.shape[0] == Sigma_Y.shape[1] == self.params['D_out']
             else:
-                y_var = np.copy(y_var).reshape(1, 1)
-            self.y_var = y_var
-        self.Sigma_Y_inv = np.linalg.inv(self.y_var)
-        self.Sigma_Y_det = np.linalg.det(self.y_var)
+                # if sigma_Y is a number, turn it into (1,1)
+                Sigma_Y = np.copy(Sigma_Y).reshape(1, 1)
+        self.Sigma_Y_inv = np.linalg.inv(Sigma_Y)
+        self.Sigma_Y_det = np.linalg.det(Sigma_Y)
 
     def set_weights(self, new_weights):
         """ change original weights W"""
@@ -199,7 +229,7 @@ class Feedforward(Model):
 
     def get_likelihood(self, X, y, use_subweights=True, z=None, P=None, w_hat=None, weights=None):
         """
-        return likelihood function N(y; mean=likelihood of nn.forward(X, W), var=y_var)
+        return likelihood function N(y; mean=likelihood of nn.forward(X, W), var=Sigma_Y)
         :param X: input data X
         :param y: input data y
         :param use_subweights: default is True, which means use subspace weights.
@@ -207,16 +237,21 @@ class Feedforward(Model):
         :param P: projection matrix: (n_parameter, n_subspace)
         :param w_hat: shift vector: (n_parameter,1)
         :param weights: original weights
-        :return: N(y; mean=likelihood of nn.forward(X, W), var=y_var)
+        :return: N(y; mean=likelihood of nn.forward(X, W), var=Sigma_Y) shape: (nsamples,)
         """
         # W = w_hat + P@z
         if use_subweights:
-            weights = self.get_W_from_z(z=z, P=P, w_hat=w_hat)
+            y_pred = self.forward(z=z, P=P, w_hat=w_hat, X=X.reshape(self.params['D_in'], -1))
+        else:
+            y_pred = self.forward(use_subweights=False, weights=weights.reshape(-1, self.D),
+                                  X=X.reshape(self.params['D_in'], -1))
+
         y = y.reshape(-1, self.params['D_out'])
-        y_pred = self.forward(weights=weights.reshape(-1, self.D), x=X)
-        # y_pred shape -1, D_out
+        y_pred = y_pred.reshape(-1, self.params['D_out'])
+
+
         constant = -0.5 * (self.params['D_out'] * np.log(2 * np.pi)) + np.log(self.Sigma_Y_det)
-        exponential_Y = -0.5 * np.diag(np.dot(np.dot((y - y_pred, self.Sigma_Y_inv), (y - y_pred).T)))
+        exponential_Y = -0.5 * np.diag((y - y_pred)@self.Sigma_Y_inv@(y - y_pred).T)
         ##### what is the mean? y_pred is mean.
         return constant + exponential_Y
 
@@ -244,3 +279,66 @@ class Feedforward(Model):
             return objective, grad(objective)
         else:
             return objective
+
+    def fit(self, x_train, y_train, reg_param=None, params=None):
+        """
+        train MSE model.
+        :param x_train:
+        :param y_train:
+        :param reg_param:
+        :param params:
+        :return:
+        """
+
+        assert x_train.shape[0] == self.params['D_in']
+        assert y_train.shape[0] == self.params['D_out']
+
+        ### make objective function for training
+        self.objective, self.gradient = self.make_objective(x_train=x_train, y_train=y_train, reg_param=reg_param)
+
+        ### set up optimization
+        step_size = 0.01
+        max_iteration = 5000
+        check_point = 100
+        weights_init = self.weights.reshape((1, -1))
+        optimizer = 'adam'
+        random_restarts = 5
+
+        if 'step_size' in params.keys():
+            step_size = params['step_size']
+        if 'max_iteration' in params.keys():
+            max_iteration = params['max_iteration']
+        if 'check_point' in params.keys():
+            self.check_point = params['check_point']
+        if 'init' in params.keys():
+            weights_init = params['init']
+        if 'call_back' in params.keys():
+            call_back = params['call_back']
+        if 'optimizer' in params.keys():
+            optimizer = params['optimizer']
+        if 'random_restarts' in params.keys():
+            random_restarts = params['random_restarts']
+
+        def call_back(weights, iteration, g):
+            ''' Actions per optimization step '''
+            objective = self.objective(weights, iteration)
+            self.objective_trace = np.vstack((self.objective_trace, objective))
+            self.weight_trace = np.vstack((self.weight_trace, weights))
+            if iteration % check_point == 0:
+                print("Iteration {} lower bound {}; gradient mag: {}".format(iteration, objective, np.linalg.norm(
+                    self.gradient(weights, iteration))))
+
+        ### train with random restarts
+        optimal_obj = 1e16
+
+        for i in range(random_restarts):
+            if optimizer == 'adam':
+                adam(self.gradient, weights_init, step_size=step_size, num_iters=max_iteration, callback=call_back)
+            local_opt = np.min(self.objective_trace[-100:])
+            if local_opt < optimal_obj:
+                opt_index = np.argmin(self.objective_trace[-100:])
+                self.weights = self.weight_trace[-100:][opt_index].reshape((1, -1))
+            weights_init = self.random.normal(0, 1, size=(1, self.D))
+
+        self.objective_trace = self.objective_trace[1:]
+        self.weight_trace = self.weight_trace[1:]
