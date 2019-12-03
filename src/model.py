@@ -75,14 +75,16 @@ class Model(ABC):
 
         # W = w_hat + P@z
         z = z.reshape(P.shape[-1], -1)
-        assert (P.shape[0], z.shape[1]) == w_hat.shape
+        assert P.shape[0] == w_hat.shape[0]
         return w_hat + P @ z
 
     def get_z_from_W(self, weights, P, w_hat):
         """
         return z: W=w_hat+P@z
+        P.T@(W-w_hat) = P.T@P@z
         """
-        return np.linalg.pinv(P) @ (weights.reshape(-1, 1) - w_hat.reshape(-1, 1))
+        pp = P.T@P
+        return np.linalg.pinv(pp) @P.T@(weights.reshape(-1, 1) - w_hat.reshape(-1, 1))
 
     def vectorize_weights(self):
         """
@@ -244,14 +246,16 @@ class Feedforward(Model):
             y_pred = self.forward(z=z, P=P, w_hat=w_hat, X=X.reshape(self.params['D_in'], -1))
         else:
             y_pred = self.forward(use_subweights=False, weights=weights.reshape(-1, self.D),
-                                  X=X.reshape(self.params['D_in'], -1))
+                                  X=X.reshape(self.params['D_in'], -1))  # S, d-out, n_train
 
-        y = y.reshape(-1, self.params['D_out'])
-        y_pred = y_pred.reshape(-1, self.params['D_out'])
-
+        y = y.reshape(1, self.params['D_out'], -1)
+        y_pred = y_pred.reshape(-1, self.params['D_out'], y.shape[-1])  # S, d-out, n_train
 
         constant = -0.5 * (self.params['D_out'] * np.log(2 * np.pi)) + np.log(self.Sigma_Y_det)
-        exponential_Y = -0.5 * np.diag((y - y_pred)@self.Sigma_Y_inv@(y - y_pred).T)
+        exp_part = np.einsum('abc,acd->abd', np.einsum('efg,fh->egh', y - y_pred, self.Sigma_Y_inv),
+                             y - y_pred)  # (y-y_pred).T@Sigma_Y_inv@(y-y_pred)
+        # according to weiwei's code, likelihood is a value. sum of all the results.
+        exponential_Y = -0.5 * np.diagonal(exp_part, axis1=-1, axis2=-2).sum(axis=1)
         ##### what is the mean? y_pred is mean.
         return constant + exponential_Y
 

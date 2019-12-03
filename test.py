@@ -36,10 +36,11 @@ if __name__ == '__main__':
     # ---------------- Core thing! ------------------ #
     # set up model, subspace, inference
     my_nn = Model.create(submodel_type="Feedforward", architecture=architecture)
-    my_subspace = Subspace.create(subspace_type="pca", model=my_nn, n_subspace=2)
+    my_subspace = Subspace.create(subspace_type="random", model=my_nn, n_subspace=2)
     my_subspace.collect_vector(X=x, y=y)
     P, w = my_subspace.get_space()
-    my_inference = Inference.create(inference_type="HMC", model=my_nn, P=P, w_hat=w)
+    # my_inference = Inference.create(inference_type="HMC", model=my_nn, P=P, w_hat=w)
+    my_inference = Inference.create(inference_type="BBB", model=my_nn, P=P, w_hat=w)
 
     # use MSE result as params_init
     params = {'step_size': 1e-3,
@@ -51,15 +52,22 @@ if __name__ == '__main__':
 
     # get initial weights (in subspace dimension!!)
     position_init = my_nn.get_z_from_W(weights=my_nn.weights, P=P, w_hat=w)
+    # # notice since P from PCA is too small (almost 1e-16), the inversed z is too large! Maybe sth wrong at PCA!
+    # so if P is too small, it is better to start with position_init=None
 
     # train
-    my_inference.train(X=x, y=y, warm_start=True, position_init=position_init)
+    # for HMC
+    # my_inference.train(X=x, y=y, warm_start=True, position_init=position_init)
+    # for BBB
+    my_inference.train(X=x, y=y, warm_start=True, init_mean=position_init)
 
     # get posterior z
     n_sample = 10
     post_sample = my_inference.get_posterior(n_samples=n_sample).reshape(-1, 2)
     x_test = np.linspace(-8, 8, 100)
-    y_test = np.reshape([my_nn.forward(P=P, w_hat=w, z=post_sample[i],  X=x_test.reshape(1, -1)) for i in range(n_sample)], (n_sample, -1)) \
+    y_test = np.reshape(
+        [my_nn.forward(P=P, w_hat=w, z=post_sample[i], X=x_test.reshape(1, -1)) for i in range(n_sample)],
+        (n_sample, -1)) \
              + np.random.normal(0, my_nn.Sigma_Y_det ** 0.5, size=(n_sample, len(x_test)))
     # because here Sigma_Y is 1-D, so determinants=its value
 
@@ -67,10 +75,10 @@ if __name__ == '__main__':
     plt.figure(figsize=(15, 5))
     plt.subplot(1, 2, 1)
     plt.grid()
-    plt.title('Posterior Predictive of Bayesian NN | HMC')
+    plt.title('Posterior Predictive of Bayesian NN ')
     plt.ylim(-15, 15)
     for i in range(n_sample):
-        plt.plot(x_test, y_test[i], color='red', alpha=max(1/n_sample,0.1))
+        plt.plot(x_test, y_test[i], color='red', alpha=max(1 / n_sample, 0.1))
     plt.scatter(x, y, color='black', label='data')
     plt.legend()
     plt.subplot(1, 2, 2)
@@ -79,7 +87,7 @@ if __name__ == '__main__':
     plt.fill_between(x_test, np.percentile(y_test, 0.25, axis=0), np.percentile(y_test, 97.5, axis=0),
                      color='red', label='95% CI', alpha=0.5)
     plt.legend(loc='best')
-    plt.title('Posterior Predictive of Bayesian NN with 95% CI |HMC')
+    plt.title('Posterior Predictive of Bayesian NN with 95% CI')
     plt.grid()
     plt.ylim(-15, 15)
     plt.show()

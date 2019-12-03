@@ -48,7 +48,7 @@ class Inference(ABC):
     def log_prior(self, z):
         """return log likelihood of prior distribution."""
         D = self.P.shape[1]
-        z = z.reshape((1, D))
+        z = z.reshape((-1, D))
         constant_W = -0.5 * (D * np.log(2 * np.pi) + np.log(self.Sigma_Z_det))
         exponential_W = -0.5 * np.diag(np.dot(np.dot(z - self.Mean_Z, self.Sigma_Z_inv), (z - self.Mean_Z).T))
         return constant_W + exponential_W
@@ -116,6 +116,7 @@ class BBB(Inference):
            'checkpoint':200,
            'init_mean': None,
            'init_log_std': None}
+        self.variational_mu, self.variational_Sigma is the best result of BBVI.
         """
         if random is not None:
             if isinstance(random, int):
@@ -142,8 +143,8 @@ class BBB(Inference):
 
         if tune_params is None:
             self.tune_params = {'step_size': 0.1,
-                                'S': 2000,
-                                'max_iteration': 20000,
+                                'S': 100,
+                                'max_iteration': 1000,
                                 'checkpoint': 200,
                                 'verbose': True,
                                 'init_mean': None,
@@ -172,7 +173,7 @@ class BBB(Inference):
         """
         # set objective function
         self.log_density = lambda z, t: self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat) \
-                                        + self.log_prior(z)
+                                        + self.log_prior(z).reshape(-1, 1)
 
         # Set model parameters
         if step_size is not None:
@@ -184,9 +185,9 @@ class BBB(Inference):
         if verbose is not None:
             self.tune_params['verbose'] = verbose
         if init_mean is not None:
-            self.tune_params['init_mean'] = init_mean
+            self.tune_params['init_mean'] = init_mean.reshape(self.D, )
         if init_var is not None:
-            self.tune_params['init_var'] = init_var
+            self.tune_params['init_var'] = init_var.reshape(self.D, )
         if checkpoint is not None:
             self.tune_params['checkpoint'] = checkpoint
 
@@ -200,18 +201,20 @@ class BBB(Inference):
             optimal_var_params = self.variational_params[-100:][opt_param_index]
             self.variational_mu = optimal_var_params[:self.D]
             self.variational_Sigma = np.diag(optimal_var_params[self.D:])
+            self.optimal_trace=self.variational_params
+        else:
+            for i in range(1, random_restart):
+                self.variational_inference(analytic_entropy=analytic_entropy, softplus=softplus, optimizer=optimizer,
+                                           warm_start=False)
+                local_opt = np.max(self.ELBO[-100:])
 
-        for i in range(random_restart):
-            self.variational_inference(analytic_entropy=analytic_entropy, softplus=softplus, optimizer=optimizer,
-                                       warm_start=False)
-            local_opt = np.max(self.ELBO[-100:])
-
-            if local_opt > optimal_ELBO:
-                optimal_ELBO = local_opt
-                opt_param_index = np.argmax(self.ELBO[-100:])
-                optimal_var_params = self.variational_params[-100:][opt_param_index]
-                self.variational_mu = optimal_var_params[:self.D]
-                self.variational_Sigma = np.diag(optimal_var_params[self.D:])
+                if local_opt > optimal_ELBO:
+                    optimal_ELBO = local_opt
+                    opt_param_index = np.argmax(self.ELBO[-100:])
+                    self.optimal_trace = self.variational_params
+                    optimal_var_params = self.variational_params[-100:][opt_param_index]
+                    self.variational_mu = optimal_var_params[:self.D]
+                    self.variational_Sigma = np.diag(optimal_var_params[self.D:])
 
     def make_variational_objective(self, analytic_entropy, softplus, log_probability):
         """Notes: this is an extension of BBVI(http://arxiv.org/abs/1401.0118, and uses the
@@ -281,15 +284,18 @@ class BBB(Inference):
             mean, var = unpack_params(params)
             self.variational_params = np.vstack((self.variational_params, np.hstack((mean, var)).reshape((1, -1))))
             if self.tune_params['verbose'] and iteration % self.tune_params['checkpoint'] == 0:
+                print(params)
                 print("Iteration {} lower bound {}; gradient mag: {}".format(iteration, elbo, np.linalg.norm(
-                    self.gradient(params, iteration))))
+                    gradient(params, iteration))))
+
+
 
         # initialize variational parameters
         if self.tune_params['init_mean'] is None:
-            init_mean = self.random.normal(0, 0.1, size=self.D)
+            self.tune_params['init_mean'] = self.random.normal(0, 0.1, size=self.D)
         if self.tune_params['init_var'] is None:
-            init_var = self.random.normal(0, 0.1, size=self.D)
-        init_params = np.concatenate([init_mean, init_var])
+            self.tune_params['init_var'] = self.random.normal(0, 0.1, size=self.D)
+        init_params = np.concatenate([self.tune_params['init_mean'], self.tune_params['init_var']])
         assert len(init_params) == 2 * self.D
 
         if not warm_start:
@@ -406,8 +412,9 @@ class HMC(Inference):
     def train(self, X, y, warm_start=True, position_init=None, step_size=None, leapfrog_steps=None,
               total_samples=None, burn_in=None, thinning_factor=None, check_point=200, alpha=None,
               diagnostic_mode=None):
-        self.potential_energy = lambda z: -1 * (self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat)
-                                                + self.log_prior(z))[0]
+        self.potential_energy = lambda z: -1 * (
+                    self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat).reshape(-1)
+                    + self.log_prior(z))[0]
         self.total_energy = lambda position, momentum: self.potential_energy(position) + self.kinetic_energy(momentum)
         self.grad_potential_energy = grad(self.potential_energy)
 
@@ -422,7 +429,7 @@ class HMC(Inference):
         if position_init is None:
             position_init = self.random.normal(0, 1, size=momentum_init.shape)
         else:
-            position_init=position_init.reshape(momentum_init.shape)
+            position_init = position_init.reshape(momentum_init.shape)
 
         if step_size is not None:
             self.tune_params['step_size'] = step_size
@@ -458,14 +465,12 @@ class HMC(Inference):
         # half step update of momentum
         momentum = momentum_init - self.tune_params['step_size'] * self.grad_potential_energy(position_init) / 2
 
-
         # full leap frog steps
         for _ in range(self.tune_params['leapfrog_steps'] - 1):
             position += self.tune_params['step_size'] * momentum
             momentum -= self.tune_params['step_size'] * self.grad_potential_energy(position)
             assert not np.any(np.isnan(position))
             assert not np.any(np.isnan(momentum))
-
 
         # full step update of position
         position_proposal = position  # + self.tune_params['step_size'] * momentum
@@ -476,7 +481,6 @@ class HMC(Inference):
     def hmc(self, position_current):
         # Refresh momentum
         momentum_current = self.sample_momentum(1)
-
 
         # Simulate Hamiltonian dynamics using Leap Frog
         position_proposal, momentum_proposal = self.leap_frog(position_current, momentum_current)
