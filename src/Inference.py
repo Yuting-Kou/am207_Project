@@ -201,7 +201,7 @@ class BBB(Inference):
             optimal_var_params = self.variational_params[-100:][opt_param_index]
             self.variational_mu = optimal_var_params[:self.D]
             self.variational_Sigma = np.diag(optimal_var_params[self.D:])
-            self.optimal_trace=self.variational_params
+            self.optimal_trace = self.variational_params
         else:
             for i in range(1, random_restart):
                 self.variational_inference(analytic_entropy=analytic_entropy, softplus=softplus, optimizer=optimizer,
@@ -288,8 +288,6 @@ class BBB(Inference):
                 print("Iteration {} lower bound {}; gradient mag: {}".format(iteration, elbo, np.linalg.norm(
                     gradient(params, iteration))))
 
-
-
         # initialize variational parameters
         if self.tune_params['init_mean'] is None:
             self.tune_params['init_mean'] = self.random.normal(0, 0.1, size=self.D)
@@ -342,8 +340,8 @@ class HMC(Inference):
     === ===
     """
 
-    def __init__(self, model, P, w_hat, potential_energy=None, kinetic_energy=None, kinetic_energy_distribution=None,
-                 Sigma_Z=None, Mean_Z=None, Sigma_Y=None, random=None, diagnostic_mode=False, tune_params=None):
+    def __init__(self, model, P, w_hat, Sigma_Z=None, Mean_Z=None, Sigma_Y=None, random=None, diagnostic_mode=False,
+                 tune_params=None):
         """
         (default) potential_energy = -(log_lklhd + log_prior)
         (default) kinetic_energy = lambda W: np.sum(W**2) / 2.0
@@ -360,6 +358,7 @@ class HMC(Inference):
            'burn_in': 0.1,
            'thinning_factor': 1,
            'warm_start':True,
+           'mom_std':1, # std of momentum generation
            'diagnostic_mode': diagnostic_mode}
         """
         if random is not None:
@@ -379,9 +378,8 @@ class HMC(Inference):
             model.update_Sigma_Y(Sigma_Y=Sigma_Y)
 
         self.potential_energy = None  # need X,y
-        self.kinetic_energy = lambda z: np.sum(z ** 2) / 2.0
+        self.kinetic_energy = lambda z: np.sum(z ** 2) / 2.0+np.log(2*np.pi)*self.D/2
         self.total_energy = None
-        self.sample_momentum = lambda n: self.random.normal(0, 1, size=self.D).reshape((1, self.D))
         self.grad_potential_energy = None
 
         if tune_params is None:
@@ -391,6 +389,7 @@ class HMC(Inference):
                                 'burn_in': 0.1,
                                 'warm_start': True,
                                 'thinning_factor': 1,
+                                'mom_std': 2,
                                 'diagnostic_mode': diagnostic_mode}
         else:
             self.tune_params = tune_params
@@ -400,6 +399,10 @@ class HMC(Inference):
             self.tune_params['thinning_factor'] = 1
         if 'check_point' not in self.tune_params.keys():
             self.tune_params['check_point'] = 200
+        if 'mom_std' not in self.tune_params.keys():
+            self.tune_params['mom_std'] = 1
+        self.sample_momentum = lambda n: self.random.normal(0, self.tune_params['mom_std'], size=self.D).reshape(
+            (1, self.D))
 
         self.accepts = 0.
         self.iterations = 0.
@@ -413,8 +416,8 @@ class HMC(Inference):
               total_samples=None, burn_in=None, thinning_factor=None, check_point=200, alpha=None,
               diagnostic_mode=None):
         self.potential_energy = lambda z: -1 * (
-                    self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat).reshape(-1)
-                    + self.log_prior(z))[0]
+                self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat).reshape(-1)
+                + self.log_prior(z))[0]
         self.total_energy = lambda position, momentum: self.potential_energy(position) + self.kinetic_energy(momentum)
         self.grad_potential_energy = grad(self.potential_energy)
 
@@ -473,10 +476,10 @@ class HMC(Inference):
             assert not np.any(np.isnan(momentum))
 
         # full step update of position
-        position_proposal = position  # + self.tune_params['step_size'] * momentum
+        position_proposal = position + self.tune_params['step_size'] * momentum
         # half step update of momentum
         momentum_proposal = momentum - self.tune_params['step_size'] * self.grad_potential_energy(position) / 2
-        return position_proposal, momentum_proposal
+        return position_proposal, -momentum_proposal
 
     def hmc(self, position_current):
         # Refresh momentum
@@ -497,7 +500,7 @@ class HMC(Inference):
             print('kinetic energy change:',
                   self.kinetic_energy(momentum_current),
                   self.kinetic_energy(momentum_proposal))
-            print('total enregy change:',
+            print('total energy change:',
                   current_total_energy,
                   proposal_total_energy)
             print('\n\n')

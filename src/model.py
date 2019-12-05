@@ -83,8 +83,8 @@ class Model(ABC):
         return z: W=w_hat+P@z
         P.T@(W-w_hat) = P.T@P@z
         """
-        pp = P.T@P
-        return np.linalg.pinv(pp) @P.T@(weights.reshape(-1, 1) - w_hat.reshape(-1, 1))
+        pp = P.T @ P
+        return np.linalg.pinv(pp) @ P.T @ (weights.reshape(-1, 1) - w_hat.reshape(-1, 1))
 
     def vectorize_weights(self):
         """
@@ -231,7 +231,7 @@ class Feedforward(Model):
 
     def get_likelihood(self, X, y, use_subweights=True, z=None, P=None, w_hat=None, weights=None):
         """
-        return likelihood function N(y; mean=likelihood of nn.forward(X, W), var=Sigma_Y)
+        return log likelihood function N(y; mean=likelihood of nn.forward(X, W), var=Sigma_Y)
         :param X: input data X
         :param y: input data y
         :param use_subweights: default is True, which means use subspace weights.
@@ -248,14 +248,16 @@ class Feedforward(Model):
             y_pred = self.forward(use_subweights=False, weights=weights.reshape(-1, self.D),
                                   X=X.reshape(self.params['D_in'], -1))  # S, d-out, n_train
 
-        y = y.reshape(1, self.params['D_out'], -1)
-        y_pred = y_pred.reshape(-1, self.params['D_out'], y.shape[-1])  # S, d-out, n_train
-
         constant = -0.5 * (self.params['D_out'] * np.log(2 * np.pi)) + np.log(self.Sigma_Y_det)
-        exp_part = np.einsum('abc,acd->abd', np.einsum('efg,fh->egh', y - y_pred, self.Sigma_Y_inv),
-                             y - y_pred)  # (y-y_pred).T@Sigma_Y_inv@(y-y_pred)
-        # according to weiwei's code, likelihood is a value. sum of all the results.
-        exponential_Y = -0.5 * np.diagonal(exp_part, axis1=-1, axis2=-2).sum(axis=1)
+        if self.params['D_out'] > 1:
+            y = y.reshape(1, self.params['D_out'], -1)
+            y_pred = y_pred.reshape(-1, self.params['D_out'], y.shape[-1])  # S, d-out, n_train
+            exp_part = np.einsum('abc,acd->abd', np.einsum('efg,fh->egh', y - y_pred, self.Sigma_Y_inv),
+                                 y - y_pred)  # (y-y_pred).T@Sigma_Y_inv@(y-y_pred)
+            # according to weiwei's code, likelihood is a value. sum of all the results.
+            exponential_Y = -0.5 * np.diagonal(exp_part, axis1=-1, axis2=-2).sum(axis=1)
+        else:
+            exponential_Y = -0.5 * sum((y.ravel() - y_pred.ravel()) ** 2) * self.Sigma_Y_inv[0, 0]
         ##### what is the mean? y_pred is mean.
         return constant + exponential_Y
 
