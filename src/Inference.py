@@ -140,7 +140,7 @@ class BBB(Inference):
         self.log_density = None
 
         if tune_params is None:
-            self.tune_params = {'step_size': 0.1,
+            self.tune_params = {'step_size': 0.01,
                                 'S': 100,
                                 'max_iteration': 1000,
                                 'checkpoint': 200,
