@@ -3,8 +3,7 @@ from abc import ABC
 from autograd import numpy as np
 from sklearn.utils.extmath import randomized_svd
 
-from SWA import SWA
-from model import Model
+from .SWA import SWA
 
 
 class Subspace(ABC):
@@ -42,7 +41,7 @@ class Subspace(ABC):
 
 @Subspace.register_subclass('random')
 class RandomSpace(Subspace):
-    def __init__(self, model:Model, n_subspace=20):
+    def __init__(self, model, n_subspace=20):
         """
         Initialize random subspace method
         :param n_subspace: # of dimension of low_dim representation (small)
@@ -71,7 +70,7 @@ class RandomSpace(Subspace):
 
 @Subspace.register_subclass('pca')
 class PCASpace(Subspace):
-    def __init__(self, model:Model, n_subspace=20):
+    def __init__(self, model, n_subspace=20):
         """
         Initialize random subspace method
         :param model: # of dimension of original weight space

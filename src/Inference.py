@@ -4,8 +4,6 @@ from autograd import grad
 from autograd import numpy as np
 from autograd.misc.optimizers import adam, sgd
 
-from model import Model
-
 
 class Inference(ABC):
     """
@@ -90,7 +88,7 @@ class BBB(Inference):
     BBB_sampler = BBB(model, P, w_hat, Sigma_Z, Mean_Z, Sigma_Y, random=0)
 
     #sample from the bayesian neural network posterior
-    BBB_sampler.train( X, y, warm_start=False, S=None, max_iteration=None, step_size=None, verbose=None, init_mean=None,
+    BBB_sampler.train( X, y, warm_start=False, S=None, max_iteration=None, step_size=None, verbose=None, position_init=None,
               init_var=None, checkpoint=None, analytic_entropy=True, softplus=True, optimizer='adam', random_restart=1):
 
     # get posterior of z
@@ -99,7 +97,7 @@ class BBB(Inference):
 
     """
 
-    def __init__(self, model: Model, P, w_hat, Sigma_Z=None, Mean_Z=None, Sigma_Y=None,
+    def __init__(self, model, P, w_hat, Sigma_Z=None, Mean_Z=None, Sigma_Y=None,
                  random=None, tune_params=None):
         """
         model: instance of our model object, which containing log_likelihood
@@ -114,7 +112,7 @@ class BBB(Inference):
             'max_iteration':20000,
            'verbose': True,
            'checkpoint':200,
-           'init_mean': None,
+           'position_init': None,
            'init_log_std': None}
         self.variational_mu, self.variational_Sigma is the best result of BBVI.
         """
@@ -147,7 +145,7 @@ class BBB(Inference):
                                 'max_iteration': 1000,
                                 'checkpoint': 200,
                                 'verbose': True,
-                                'init_mean': None,
+                                'position_init': None,
                                 'init_var': None}
         else:
             self.tune_params = tune_params
@@ -158,11 +156,12 @@ class BBB(Inference):
             self.tune_params['checkpoint'] = 200
         if 'init_var' not in self.tune_params.keys():
             self.tune_params['init_var'] = None
-        if 'init_mean' not in self.tune_params.keys():
-            self.tune_params['init_mean'] = None
+        if 'position_init' not in self.tune_params.keys():
+            self.tune_params['position_init'] = None
 
-    def train(self, X, y, warm_start=False, S=None, max_iteration=None, step_size=None, verbose=None, init_mean=None,
-              init_var=None, checkpoint=None, analytic_entropy=True, softplus=True, optimizer='adam', random_restart=1):
+    def train(self, X, y, warm_start=False, S=None, max_iteration=None, step_size=None, verbose=None,
+              position_init=None, init_var=None, checkpoint=None, analytic_entropy=True, softplus=True,
+              optimizer='adam', random_restart=1):
         """
         train the inference sampler
         :param optimizer: default is 'adam', could be 'adam', 'sgd'
@@ -172,6 +171,10 @@ class BBB(Inference):
             if random_restart >1, then the warm_start=False.
         """
         # set objective function
+        # make sure X is in the correct shape: (D_in, -1)
+        X = X.reshape(self.model.params['D_in'], -1)
+        # print('X.shape in BBB train', X.shape)
+
         self.log_density = lambda z, t: self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat) \
                                         + self.log_prior(z).reshape(-1, 1)
 
@@ -184,8 +187,8 @@ class BBB(Inference):
             self.tune_params['max_iteration'] = max_iteration
         if verbose is not None:
             self.tune_params['verbose'] = verbose
-        if init_mean is not None:
-            self.tune_params['init_mean'] = init_mean.reshape(self.D, )
+        if position_init is not None:
+            self.tune_params['position_init'] = position_init.reshape(self.D, )
         if init_var is not None:
             self.tune_params['init_var'] = init_var.reshape(self.D, )
         if checkpoint is not None:
@@ -289,11 +292,11 @@ class BBB(Inference):
                     gradient(params, iteration))))
 
         # initialize variational parameters
-        if self.tune_params['init_mean'] is None:
-            self.tune_params['init_mean'] = self.random.normal(0, 0.1, size=self.D)
+        if self.tune_params['position_init'] is None:
+            self.tune_params['position_init'] = self.random.normal(0, 0.1, size=self.D)
         if self.tune_params['init_var'] is None:
             self.tune_params['init_var'] = self.random.normal(0, 0.1, size=self.D)
-        init_params = np.concatenate([self.tune_params['init_mean'], self.tune_params['init_var']])
+        init_params = np.concatenate([self.tune_params['position_init'], self.tune_params['init_var']])
         assert len(init_params) == 2 * self.D
 
         if not warm_start:
@@ -378,12 +381,12 @@ class HMC(Inference):
             model.update_Sigma_Y(Sigma_Y=Sigma_Y)
 
         self.potential_energy = None  # need X,y
-        self.kinetic_energy = lambda z: np.sum(z ** 2) / 2.0+np.log(2*np.pi)*self.D/2
+        self.kinetic_energy = lambda z: np.sum(z ** 2) / 2.0 + np.log(2 * np.pi) * self.D / 2
         self.total_energy = None
         self.grad_potential_energy = None
 
         if tune_params is None:
-            self.tune_params = {'step_size': 0.1,
+            self.tune_params = {'step_size': 0.001,
                                 'leapfrog_steps': 10,
                                 'total_samples': 1000,
                                 'burn_in': 0.1,
@@ -415,6 +418,9 @@ class HMC(Inference):
     def train(self, X, y, warm_start=True, position_init=None, step_size=None, leapfrog_steps=None,
               total_samples=None, burn_in=None, thinning_factor=None, check_point=200, alpha=None,
               diagnostic_mode=None):
+        X = X.reshape(self.model.params['D_in'], -1)
+        # print('X.shape in HMC train', X.shape)
+
         self.potential_energy = lambda z: -1 * (
                 self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat).reshape(-1)
                 + self.log_prior(z))[0]

@@ -59,7 +59,7 @@ if __name__ == '__main__':
     # for HMC
     # my_inference.train(X=x, y=y, warm_start=True, position_init=position_init)
     # for BBB
-    my_inference.train(X=x, y=y, warm_start=True, init_mean=position_init)
+    my_inference.train(X=x, y=y, warm_start=True, position_init=position_init)
 
     # get posterior z
     n_sample = 10

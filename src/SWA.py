@@ -4,11 +4,9 @@ Implement SWA model and return A and W_Swa
 from autograd import numpy as np
 from autograd.misc.optimizers import sgd
 
-from model import Model
-
 
 class SWA:
-    def __init__(self, model: Model, X, y, method, lr, T, c, max_rank):
+    def __init__(self, model, X, y, method, lr, T, c, max_rank):
         """
         Implement Algo 2 of stochastic weight averaging (SWA)
         :type model: Model
@@ -27,7 +25,8 @@ class SWA:
         self.c = c
         self.max_rank = max_rank
         self.method = method
-        _, self.gradient = self.model.make_objective(x_train=X.reshape(1, -1), y_train=y, return_grad=True)
+        _, self.gradient = self.model.make_objective(x_train=X.reshape(self.model.params['D_in'], -1), y_train=y,
+                                                     return_grad=True)
         self.train_SGD()
 
     def train_SGD(self):
@@ -55,6 +54,3 @@ class SWA:
 
     def get_w_swa(self):
         return self.w_swa.T  # return size as (n_params, 1)
-
-
-

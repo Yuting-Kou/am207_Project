@@ -129,6 +129,10 @@ class Model(ABC):
 @Model.register_submodel('Feedforward')
 class Feedforward(Model):
     def __init__(self, architecture, random=None, weights=None, Sigma_Y=None):
+        """
+        input data X.shape is (D_in, -1) or (1, D_in, -1)
+        :param weights: original shape in (1, D)
+        """
         self.params = {'H': architecture['width'],
                        'L': architecture['hidden_layers'],
                        'D_in': architecture['input_dim'],
@@ -243,22 +247,28 @@ class Feedforward(Model):
         """
         # W = w_hat + P@z
         if use_subweights:
-            y_pred = self.forward(z=z, P=P, w_hat=w_hat, X=X.reshape(self.params['D_in'], -1))
+            y_pred = self.forward(z=z, P=P, w_hat=w_hat, X=X)
         else:
             y_pred = self.forward(use_subweights=False, weights=weights.reshape(-1, self.D),
-                                  X=X.reshape(self.params['D_in'], -1))  # S, d-out, n_train
+                                  X=X)  # S, d-out, n_train
+
+        # print('----model.get_likelihood()')
+        # print('y_pred.shape',y_pred.shape)
+        # print('y_shape',y.shape)
+        # print('Xshape',X.shape)
+        # print('-----')
 
         constant = -0.5 * (self.params['D_out'] * np.log(2 * np.pi)) + np.log(self.Sigma_Y_det)
+        y = y.reshape(1, self.params['D_out'], -1)
+        # y_pred = y_pred.reshape(-1, self.params['D_out'], y.shape[-1])  # S, d-out, n_train
         if self.params['D_out'] > 1:
-            y = y.reshape(1, self.params['D_out'], -1)
-            y_pred = y_pred.reshape(-1, self.params['D_out'], y.shape[-1])  # S, d-out, n_train
             exp_part = np.einsum('abc,acd->abd', np.einsum('efg,fh->egh', y - y_pred, self.Sigma_Y_inv),
                                  y - y_pred)  # (y-y_pred).T@Sigma_Y_inv@(y-y_pred)
             # according to weiwei's code, likelihood is a value. sum of all the results.
             exponential_Y = -0.5 * np.diagonal(exp_part, axis1=-1, axis2=-2).sum(axis=1)
         else:
-            exponential_Y = -0.5 * sum((y.ravel() - y_pred.ravel()) ** 2) * self.Sigma_Y_inv[0, 0]
-        ##### what is the mean? y_pred is mean.
+            exponential_Y = -0.5 * sum((y- y_pred).ravel() ** 2) * self.Sigma_Y_inv[0, 0]
+        # print(((y- y_pred).ravel()).shape)
         return constant + exponential_Y
 
     def make_objective(self, x_train, y_train, return_grad=True, reg_param=None):
