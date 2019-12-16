@@ -57,11 +57,11 @@ class Inference(ABC):
         if Sigma_Z is None:
             Sigma_Z = np.eye(D)
         else:
-            if len(Sigma_Z.shape) > 1:
-                assert Sigma_Z.shape[0] == Sigma_Z.shape[1] == D
-            else:
+            if isinstance(Sigma_Z, int) or isinstance(Sigma_Z, float):
                 # if sigma_Z is a number, turn it into (1,1)
-                Sigma_Z = np.copy(Sigma_Z).reshape(1, 1)
+                Sigma_Z = np.eye(D)*Sigma_Z
+            else:
+                assert Sigma_Z.shape[0] == Sigma_Z.shape[1] == D
         self.Sigma_Z_inv = np.linalg.inv(Sigma_Z)
         self.Sigma_Z_det = np.linalg.det(Sigma_Z)
         if Mean_Z is None:
@@ -173,6 +173,7 @@ class BBB(Inference):
         # set objective function
         # make sure X is in the correct shape: (D_in, -1)
         X = X.reshape(self.model.params['D_in'], -1)
+        y = y.reshape(1, self.model.params['D_out'], -1)
         # print('X.shape in BBB train', X.shape)
 
         self.log_density = lambda z, t: self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat) \
@@ -418,7 +419,7 @@ class HMC(Inference):
     def train(self, X, y, warm_start=True, position_init=None, step_size=None, leapfrog_steps=None,
               total_samples=None, burn_in=None, thinning_factor=None, check_point=200, diagnostic_mode=None):
         X = X.reshape(self.model.params['D_in'], -1)
-        # print('X.shape in HMC train', X.shape)
+        y = y.reshape(1, self.model.params['D_out'], -1)
 
         self.potential_energy = lambda z: -1 * (
                 self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat).reshape(-1)

@@ -259,7 +259,7 @@ class Feedforward(Model):
         # print('-----')
 
         constant = -0.5 * (self.params['D_out'] * np.log(2 * np.pi)) + np.log(self.Sigma_Y_det)
-        y = y.reshape(1, self.params['D_out'], -1)
+
         # y_pred = y_pred.reshape(-1, self.params['D_out'], y.shape[-1])  # S, d-out, n_train
         if self.params['D_out'] > 1:
             exp_part = np.einsum('abc,acd->abd', np.einsum('efg,fh->egh', y - y_pred, self.Sigma_Y_inv),
