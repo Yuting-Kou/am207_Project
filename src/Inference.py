@@ -416,8 +416,7 @@ class HMC(Inference):
         assert isinstance(self.kinetic_energy(self.sample_momentum(1)), float)
 
     def train(self, X, y, warm_start=True, position_init=None, step_size=None, leapfrog_steps=None,
-              total_samples=None, burn_in=None, thinning_factor=None, check_point=200, alpha=None,
-              diagnostic_mode=None):
+              total_samples=None, burn_in=None, thinning_factor=None, check_point=200, diagnostic_mode=None):
         X = X.reshape(self.model.params['D_in'], -1)
         # print('X.shape in HMC train', X.shape)
 
