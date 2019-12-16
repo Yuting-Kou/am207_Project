@@ -259,7 +259,7 @@ class Feedforward(Model):
         # print('Xshape',X.shape)
         # print('-----')
 
-        constant = -0.5 * (self.params['D_out'] * np.log(2 * np.pi)) + np.log(self.Sigma_Y_det)
+        constant = -0.5 * self.params['D_out'] * np.log(2 * np.pi) - np.log(self.Sigma_Y_det)
 
         # y_pred = y_pred.reshape(-1, self.params['D_out'], y.shape[-1])  # S, d-out, n_train
         if self.params['D_out'] > 1:
@@ -268,8 +268,8 @@ class Feedforward(Model):
             # according to weiwei's code, likelihood is a value. sum of all the results.
             exponential_Y = -0.5 * np.diagonal(exp_part, axis1=-1, axis2=-2).sum(axis=1)
         else:
-            exponential_Y = -0.5 * sum((y - y_pred).ravel() ** 2) * self.Sigma_Y_inv[0, 0]
-        # print(((y- y_pred).ravel()).shape)
+            exponential_Y = -0.5 * self.Sigma_Y_inv[0, 0] * np.sum((y - y_pred) ** 2, axis=2).ravel()
+        assert exponential_Y.shape == (y_pred.shape[0],) # S
         return constant + exponential_Y
 
     def make_objective(self, x_train, y_train, return_grad=True, reg_param=None):

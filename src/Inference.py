@@ -46,10 +46,11 @@ class Inference(ABC):
     def log_prior(self, z):
         """return log likelihood of prior distribution."""
         D = self.P.shape[1]
-        # z = z.reshape((-1, D))
+        assert len(z.shape) == 2 and z.shape[1] == D
         # print('log prior, zshape: -1,D',z.shape)
         constant_W = -0.5 * (D * np.log(2 * np.pi) + np.log(self.Sigma_Z_det))
         exponential_W = -0.5 * np.diag(np.dot(np.dot(z - self.Mean_Z, self.Sigma_Z_inv), (z - self.Mean_Z).T))
+        assert exponential_W.shape == (len(z),)
         return constant_W + exponential_W
 
     def update_prior(self, Sigma_Z=None, Mean_Z=None):
@@ -60,7 +61,7 @@ class Inference(ABC):
         else:
             if isinstance(Sigma_Z, int) or isinstance(Sigma_Z, float):
                 # if sigma_Z is a number, turn it into (1,1)
-                Sigma_Z = np.eye(D)*Sigma_Z
+                Sigma_Z = np.eye(D) * Sigma_Z
             else:
                 assert Sigma_Z.shape[0] == Sigma_Z.shape[1] == D
         self.Sigma_Z_inv = np.linalg.inv(Sigma_Z)
@@ -469,24 +470,23 @@ class HMC(Inference):
         self.trace = self.trace[::self.tune_params['thinning_factor']]
 
     def leap_frog(self, position_init, momentum_init):
-        # initialize position
-        position = position_init
+        q = np.copy(position_init)
+        p = np.copy(momentum_init)  # protect the current value of q and p
 
-        # half step update of momentum
-        momentum = momentum_init - self.tune_params['step_size'] * self.grad_potential_energy(position_init) / 2
+        # half-step update for momentum at the beginning
+        p = p - self.tune_params['step_size'] / 2 * self.grad_potential_energy(q)
 
-        # full leap frog steps
         for _ in range(self.tune_params['leapfrog_steps'] - 1):
-            position += self.tune_params['step_size'] * momentum
-            momentum -= self.tune_params['step_size'] * self.grad_potential_energy(position)
-            assert not np.any(np.isnan(position))
-            assert not np.any(np.isnan(momentum))
+            q = q + self.tune_params['step_size'] * p
+            p = p - self.tune_params['step_size'] * self.grad_potential_energy(q)
 
-        # full step update of position
-        position_proposal = position + self.tune_params['step_size'] * momentum
-        # half step update of momentum
-        momentum_proposal = momentum - self.tune_params['step_size'] * self.grad_potential_energy(position) / 2
-        return position_proposal, -momentum_proposal
+        # full-step update for position:
+        q = q + self.tune_params['step_size'] * p
+        # half-step update for momentum at the end:
+        p = p - self.tune_params['step_size'] / 2 * self.grad_potential_energy(q)
+
+        # reverse momentum
+        return q, -p
 
     def hmc(self, position_current):
         # Refresh momentum
