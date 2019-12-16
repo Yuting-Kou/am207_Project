@@ -46,7 +46,8 @@ class Inference(ABC):
     def log_prior(self, z):
         """return log likelihood of prior distribution."""
         D = self.P.shape[1]
-        z = z.reshape((-1, D))
+        # z = z.reshape((-1, D))
+        # print('log prior, zshape: -1,D',z.shape)
         constant_W = -0.5 * (D * np.log(2 * np.pi) + np.log(self.Sigma_Z_det))
         exponential_W = -0.5 * np.diag(np.dot(np.dot(z - self.Mean_Z, self.Sigma_Z_inv), (z - self.Mean_Z).T))
         return constant_W + exponential_W
@@ -267,6 +268,7 @@ class BBB(Inference):
             def variational_objective(params, t):
                 # unpack var parameters
                 mean, var = unpack_params(params)
+                # print('mean shape in var_obj, (1,D)',mean.shape)
                 # sample from q using reparametrization
                 samples = self.random.randn(self.tune_params['S'], self.D) * var + mean
                 # ELBO
@@ -405,8 +407,7 @@ class HMC(Inference):
             self.tune_params['check_point'] = 200
         if 'mom_std' not in self.tune_params.keys():
             self.tune_params['mom_std'] = 1
-        self.sample_momentum = lambda n: self.random.normal(0, self.tune_params['mom_std'], size=self.D).reshape(
-            (1, self.D))
+        self.sample_momentum = lambda n: self.random.normal(0, self.tune_params['mom_std'], size=(1, self.D))
 
         self.accepts = 0.
         self.iterations = 0.
@@ -422,7 +423,7 @@ class HMC(Inference):
         y = y.reshape(1, self.model.params['D_out'], -1)
 
         self.potential_energy = lambda z: -1 * (
-                self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat).reshape(-1)
+                self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat).ravel()
                 + self.log_prior(z))[0]
         self.total_energy = lambda position, momentum: self.potential_energy(position) + self.kinetic_energy(momentum)
         self.grad_potential_energy = grad(self.potential_energy)

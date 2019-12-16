@@ -68,7 +68,10 @@ class Model(ABC):
         pass
 
     def get_W_from_z(self, z, P, w_hat):
-        """ return original weights from subspace weights """
+        """
+        return original weights from subspace weights
+        Output shape: w_hat.T: (-1,D) in order to fit forward need.
+        """
         assert z is not None
         assert P is not None
         assert w_hat is not None
@@ -76,7 +79,7 @@ class Model(ABC):
         # W = w_hat + P@z
         z = z.reshape(P.shape[-1], -1)
         assert P.shape[0] == w_hat.shape[0]
-        return w_hat + P @ z
+        return (w_hat + P @ z).T
 
     def get_z_from_W(self, weights, P, w_hat):
         """
@@ -189,7 +192,6 @@ class Feedforward(Model):
         '''
         if use_subweights:
             weights = self.get_W_from_z(z=z, P=P, w_hat=w_hat)
-            weights = weights.reshape(-1, self.D)
 
         H = self.params['H']
         D_in = self.params['D_in']
@@ -249,8 +251,7 @@ class Feedforward(Model):
         if use_subweights:
             y_pred = self.forward(z=z, P=P, w_hat=w_hat, X=X)
         else:
-            y_pred = self.forward(use_subweights=False, weights=weights.reshape(-1, self.D),
-                                  X=X)  # S, d-out, n_train
+            y_pred = self.forward(use_subweights=False, weights=weights, X=X)  # S, d-out, n_train
 
         # print('----model.get_likelihood()')
         # print('y_pred.shape',y_pred.shape)
@@ -267,7 +268,7 @@ class Feedforward(Model):
             # according to weiwei's code, likelihood is a value. sum of all the results.
             exponential_Y = -0.5 * np.diagonal(exp_part, axis1=-1, axis2=-2).sum(axis=1)
         else:
-            exponential_Y = -0.5 * sum((y- y_pred).ravel() ** 2) * self.Sigma_Y_inv[0, 0]
+            exponential_Y = -0.5 * sum((y - y_pred).ravel() ** 2) * self.Sigma_Y_inv[0, 0]
         # print(((y- y_pred).ravel()).shape)
         return constant + exponential_Y
 
