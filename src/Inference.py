@@ -410,6 +410,7 @@ class HMC(Inference):
         self.total_energy = None
         self.grad_potential_energy = None
 
+        self.alpha = 0.
         self.accepts = 0.
         self.iterations = 0.
         self.trace = np.empty((1, self.D_z))
@@ -513,9 +514,9 @@ class HMC(Inference):
 
         # Metropolis Hastings Step
         # compute accept probability
-        accept_prob = np.min([1, np.exp(current_total_energy - proposal_total_energy)])
+        self.alpha = np.min([1, np.exp(current_total_energy - proposal_total_energy)])
         # accept proposal with accept probability
-        if self.random.rand() < accept_prob:
+        if self.random.rand() < self.alpha:
             self.accepts += 1.
             position_current = np.copy(position_proposal)
             momentum_current = momentum_proposal
@@ -541,9 +542,9 @@ class HMC(Inference):
                                                                            self.tune_params['step_size']))
 
                 if accept_rate < 0.5:
-                    self.tune_params['step_size'] *= 0.95
+                    self.tune_params['step_size'] -= (0.5 - float(self.alpha)) * 0.005  # *= 0.95
                 if accept_rate > 0.8:
-                    self.tune_params['step_size'] *= 1.05
+                    self.tune_params['step_size'] += (float(self.alpha) - 0.7) * 0.005  # *= 1.05
 
             # perform one HMC step
             position_current, momentum_current = self.hmc(position_current)

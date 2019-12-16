@@ -69,7 +69,7 @@ if __name__ == '__main__':
         [my_nn.forward(P=P, w_hat=w, z=post_sample[i], X=x_test.reshape(1, -1)) for i in range(n_sample)],
         (n_sample, -1)) \
              + np.random.normal(0, my_nn.Sigma_Y_det ** 0.5, size=(n_sample, len(x_test)))
-    # because here Sigma_Y is 1-D, so determinants=its value
+    # because here Sigma_Y is 1-D_z, so determinants=its value
 
     # plot
     plt.figure(figsize=(15, 5))
