@@ -47,10 +47,10 @@ class Inference(ABC):
         """return log likelihood of prior distribution."""
         D = self.P.shape[1]
         assert len(z.shape) == 2 and z.shape[1] == D
-        # print('log prior, zshape: -1,D',z.shape)
+        # print('log prior, zshape: -1,D_z',z.shape)
         constant_W = -0.5 * (D * np.log(2 * np.pi) + np.log(self.Sigma_Z_det))
         exponential_W = -0.5 * np.diag(np.dot(np.dot(z - self.Mean_Z, self.Sigma_Z_inv), (z - self.Mean_Z).T))
-        assert exponential_W.shape == (len(z),)
+        assert exponential_W.shape == (len(z),)  # S
         return constant_W + exponential_W
 
     def update_prior(self, Sigma_Z=None, Mean_Z=None):
@@ -128,13 +128,13 @@ class BBB(Inference):
 
         self.model = model
         self.P = P
-        self.D = self.P.shape[1]  # dimension of lower dim z.
-        self.variational_mu = np.zeros(self.D)
-        self.variational_Sigma = np.eye(self.D)
+        self.D_z = self.P.shape[1]  # dimension of lower dim z.
+        self.variational_mu = np.zeros(self.D_z)
+        self.variational_Sigma = np.eye(self.D_z)
         self.w_hat = w_hat
         self.update_prior(Sigma_Z=Sigma_Z, Mean_Z=Mean_Z)
         self.ELBO = np.empty((1, 1))  # elbo values over optimization
-        self.variational_params = np.empty((1, 2 * self.D))  # variational parmeeters over optimization
+        self.variational_params = np.empty((1, 2 * self.D_z))  # variational parmeeters over optimization
 
         if Sigma_Y is not None:
             model.update_Sigma_Y(Sigma_Y=Sigma_Y)
@@ -191,9 +191,9 @@ class BBB(Inference):
         if verbose is not None:
             self.tune_params['verbose'] = verbose
         if position_init is not None:
-            self.tune_params['position_init'] = position_init.reshape(self.D, )
+            self.tune_params['position_init'] = position_init.reshape(self.D_z, )
         if init_var is not None:
-            self.tune_params['init_var'] = init_var.reshape(self.D, )
+            self.tune_params['init_var'] = init_var.reshape(self.D_z, )
         if checkpoint is not None:
             self.tune_params['checkpoint'] = checkpoint
 
@@ -205,8 +205,8 @@ class BBB(Inference):
                                        warm_start=warm_start)
             opt_param_index = np.argmax(self.ELBO[-100:])
             optimal_var_params = self.variational_params[-100:][opt_param_index]
-            self.variational_mu = optimal_var_params[:self.D]
-            self.variational_Sigma = np.diag(optimal_var_params[self.D:])
+            self.variational_mu = optimal_var_params[:self.D_z]
+            self.variational_Sigma = np.diag(optimal_var_params[self.D_z:])
             self.optimal_trace = self.variational_params
         else:
             for i in range(1, random_restart):
@@ -219,8 +219,8 @@ class BBB(Inference):
                     opt_param_index = np.argmax(self.ELBO[-100:])
                     self.optimal_trace = self.variational_params
                     optimal_var_params = self.variational_params[-100:][opt_param_index]
-                    self.variational_mu = optimal_var_params[:self.D]
-                    self.variational_Sigma = np.diag(optimal_var_params[self.D:])
+                    self.variational_mu = optimal_var_params[:self.D_z]
+                    self.variational_Sigma = np.diag(optimal_var_params[self.D_z:])
 
     def make_variational_objective(self, analytic_entropy, softplus, log_probability):
         """Notes: this is an extension of BBVI(http://arxiv.org/abs/1401.0118, and uses the
@@ -229,12 +229,12 @@ class BBB(Inference):
 
         if softplus:
             def unpack_params(params):
-                mean, parametrized_var = params[:self.D], params[self.D:]
+                mean, parametrized_var = params[:self.D_z], params[self.D_z:]
                 var = np.log(1 + np.exp(parametrized_var))
                 return mean, var
         else:
             def unpack_params(params):
-                mean, parametrized_var = params[:self.D], params[self.D:]
+                mean, parametrized_var = params[:self.D_z], params[self.D_z:]
                 var = np.exp(parametrized_var)
                 return mean, var
 
@@ -248,20 +248,20 @@ class BBB(Inference):
                 # unpack var parameters
                 mean, var = unpack_params(params)
                 # sample from q using reparametrization
-                samples = self.random.randn(self.tune_params['S'], self.D) * var + mean
+                samples = self.random.randn(self.tune_params['S'], self.D_z) * var + mean
                 # ELBO
                 lower_bound = entropy(var) + np.mean(log_probability(samples, t))
                 return -lower_bound
         else:
             def log_gaussian_pdf(samples, mean, var):
-                assert samples.shape == (self.tune_params['S'], self.D)
-                assert mean.shape == (1, self.D)
+                assert samples.shape == (self.tune_params['S'], self.D_z)
+                assert mean.shape == (1, self.D_z)
 
                 Sigma = np.diag(var)
                 Sigma_det = np.linalg.det(Sigma)
                 Sigma_inv = np.linalg.det(Sigma)
 
-                constant = -0.5 * (self.D * np.log(2 * np.pi) + np.log(Sigma_det))
+                constant = -0.5 * (self.D_z * np.log(2 * np.pi) + np.log(Sigma_det))
                 dist_to_mean = samples - mean
                 exponential = -0.5 * np.diag(np.dot(np.dot(dist_to_mean, Sigma_inv), dist_to_mean.T))
                 return constant + exponential
@@ -269,12 +269,12 @@ class BBB(Inference):
             def variational_objective(params, t):
                 # unpack var parameters
                 mean, var = unpack_params(params)
-                # print('mean shape in var_obj, (1,D)',mean.shape)
+                # print('mean shape in var_obj, (1,D_z)',mean.shape)
                 # sample from q using reparametrization
-                samples = self.random.randn(self.tune_params['S'], self.D) * var + mean
+                samples = self.random.randn(self.tune_params['S'], self.D_z) * var + mean
                 # ELBO
                 lower_bound = np.mean(log_probability(samples, t)
-                                      - log_gaussian_pdf(samples, mean.reshape((1, self.D)), var))
+                                      - log_gaussian_pdf(samples, mean.reshape((1, self.D_z)), var))
                 return -lower_bound
 
         return unpack_params, variational_objective, grad(variational_objective)
@@ -297,16 +297,16 @@ class BBB(Inference):
 
         # initialize variational parameters
         if self.tune_params['position_init'] is None:
-            self.tune_params['position_init'] = self.random.normal(0, 0.1, size=self.D)
+            self.tune_params['position_init'] = self.random.normal(0, 0.1, size=self.D_z)
         if self.tune_params['init_var'] is None:
-            self.tune_params['init_var'] = self.random.normal(0, 0.1, size=self.D)
+            self.tune_params['init_var'] = self.random.normal(0, 0.1, size=self.D_z)
         init_params = np.concatenate([self.tune_params['position_init'], self.tune_params['init_var']])
-        assert len(init_params) == 2 * self.D
+        assert len(init_params) == 2 * self.D_z
 
         if not warm_start:
             # reset parameters
             self.ELBO = np.empty((1, 1))
-            self.variational_params = np.empty((1, 2 * self.D))
+            self.variational_params = np.empty((1, 2 * self.D_z))
 
         # perform gradient descent
         if optimizer == 'adam':
@@ -324,7 +324,7 @@ class BBB(Inference):
     def get_posterior(self, n_samples):
         """return posterior z of model"""
         return self.random.multivariate_normal(self.variational_mu, self.variational_Sigma,
-                                               size=n_samples).reshape((-1, self.D))
+                                               size=n_samples).reshape((-1, self.D_z))
 
 
 @Inference.register_submethods('HMC')
@@ -352,10 +352,10 @@ class HMC(Inference):
         """
         (default) potential_energy = -(log_lklhd + log_prior)
         (default) kinetic_energy = lambda W: np.sum(W**2) / 2.0
-        (default) kinetic_energy_distribution = lambda D: random.normal(0, 1, size=D)
+        (default) kinetic_energy_distribution = lambda D_z: random.normal(0, 1, size=D_z)
 
         params is a dictionary includes at least following information:
-            - D: dimension of weights
+            - D_z: dimension of weights
             - Sigma_Z: prior variance of weights
 
         (default) tuning_params: a disk of following info:
@@ -378,16 +378,11 @@ class HMC(Inference):
 
         self.model = model
         self.P = P
-        self.D = self.P.shape[1]  # dimension of lower dim z.
+        self.D_z = self.P.shape[1]  # dimension of lower dim z.
         self.w_hat = w_hat
         self.update_prior(Sigma_Z=Sigma_Z, Mean_Z=Mean_Z)
         if Sigma_Y is not None:
             model.update_Sigma_Y(Sigma_Y=Sigma_Y)
-
-        self.potential_energy = None  # need X,y
-        self.kinetic_energy = lambda z: np.sum(z ** 2) / 2.0 + np.log(2 * np.pi) * self.D / 2
-        self.total_energy = None
-        self.grad_potential_energy = None
 
         if tune_params is None:
             self.tune_params = {'step_size': 0.001,
@@ -408,14 +403,19 @@ class HMC(Inference):
             self.tune_params['check_point'] = 200
         if 'mom_std' not in self.tune_params.keys():
             self.tune_params['mom_std'] = 1
-        self.sample_momentum = lambda n: self.random.normal(0, self.tune_params['mom_std'], size=(1, self.D))
+        self.sample_momentum = lambda n: self.random.normal(0, self.tune_params['mom_std'], size=(1, self.D_z))
+        self.potential_energy = None  # need X,y
+        self.kinetic_energy = lambda z: 0.5 * np.sum(z ** 2) / self.tune_params['mom_std'] \
+                                        + np.log(2 * np.pi) * self.D_z / 2
+        self.total_energy = None
+        self.grad_potential_energy = None
 
         self.accepts = 0.
         self.iterations = 0.
-        self.trace = np.empty((1, self.D))
+        self.trace = np.empty((1, self.D_z))
         self.potential_energy_trace = np.empty((1,))
 
-        assert self.sample_momentum(1).shape == (1, self.D)
+        assert self.sample_momentum(1).shape == (1, self.D_z)
         assert isinstance(self.kinetic_energy(self.sample_momentum(1)), float)
 
     def train(self, X, y, warm_start=True, position_init=None, step_size=None, leapfrog_steps=None,
@@ -423,13 +423,12 @@ class HMC(Inference):
         X = X.reshape(self.model.params['D_in'], -1)
         y = y.reshape(1, self.model.params['D_out'], -1)
 
-        self.potential_energy = lambda z: -1 * (
-                self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat).ravel()
-                + self.log_prior(z))[0]
+        self.potential_energy = lambda z: -1 * (self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat)
+                                                + self.log_prior(z))[0]
         self.total_energy = lambda position, momentum: self.potential_energy(position) + self.kinetic_energy(momentum)
         self.grad_potential_energy = grad(self.potential_energy)
 
-        assert self.grad_potential_energy(self.sample_momentum(1)).shape == (1, self.D)
+        assert self.grad_potential_energy(self.sample_momentum(1)).shape == (1, self.D_z)
         assert isinstance(self.potential_energy(self.sample_momentum(1)), float)
         assert isinstance(self.total_energy(self.sample_momentum(1), self.sample_momentum(1)), float)
 
