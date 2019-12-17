@@ -72,7 +72,7 @@ class CurveSpace(Subspace):
                 print('[epoch %d] loss: %.3f' %
                       (epoch + 1, running_loss / callback / len(self.loader)))
 
-    def collect_vector(self, epochs, X = None, y = None, restart  = False, callback = 0):
+    def collect_vector(self, epochs, X = None, y = None, restart = False, callback = 0):
         """
         :param epochs: for training midpoint
         :param X:
