@@ -34,16 +34,16 @@ class CurveSpace(Subspace):
         self.curve_net = None
         #self.curve_optimizer = curve_optimizer
 
-    def get_endpoint(self):
+    def get_endpoint(self, callback = 0):
         endpoint = []
 
         for i in range(2):
             endpoint.append(util.get_initialization(self.net, self.loader,
                                                     self.optimizer, self.criterion,
-                                                    self.params_base, i))
+                                                    self.params_base, i, callback))
         return endpoint
 
-    def get_midpoint(self, endpoint, callback):
+    def train_midpoint(self, endpoint, epochs, callback):
         w1, w2 = endpoint[0], endpoint[1]
         if self.curve_net is None:
             self.curve_net = self.curve_net_gen(w1, w2)
@@ -51,7 +51,7 @@ class CurveSpace(Subspace):
         opt = optim.Adam(self.curve_net.parameters(), lr = 0.001)
 
         #callback = 10
-        for epoch in range(self.params_curve['epochs']):
+        for epoch in range(epochs):
 
             running_loss = 0
             for i, data in enumerate(self.loader, 0):
@@ -68,29 +68,33 @@ class CurveSpace(Subspace):
                 opt.step()
 
                 running_loss += loss
-            if epoch % callback == 0:
+            if callback != 0 and epoch % callback == 0:
                 print('[epoch %d] loss: %.3f' %
                       (epoch + 1, running_loss / callback / len(self.loader)))
-        return self.curve_net.state_dict()
 
-    def collect_vector(self, X = None, y = None, callback = 0):
-        '''
+    def collect_vector(self, epochs, X = None, y = None, restart  = False, callback = 0):
+        """
+        :param epochs: for training midpoint
+        :param X:
+        :param y:
+        :param restart: True - get new endpoints
         :param callback: printing frequency
-        '''
-        if self.curve_net is None:
+        :return:
+        """
+        if self.curve_net is None or restart:
             self.endpoint = self.get_endpoint()
-        self.midpoint = self.get_midpoint(self.endpoint, callback)
-        e1 = self.flatten_weights(self.endpoint[0])
-        e2 = self.flatten_weights(self.endpoint[1])
-        m = self.flatten_weights(self.midpoint)
+        self.train_midpoint(self.endpoint, epochs, callback)
 
-        w0 = (e1+e2)/2
-        v1 = (e1 - w0) / np.linalg.norm(e1-w0)
-        v2 = (m - w0) / np.linalg.norm(m-w0)
+        self.e1 = self.flatten_weights(self.endpoint[0])
+        self.e2 = self.flatten_weights(self.endpoint[1])
+        self.m = self.flatten_weights(self.curve_net.state_dict())
+
+        w0 = (self.e1 + self.e2) / 2
+        v1 = (self.e1 - w0) / np.linalg.norm(self.e1 - w0)
+        v2 = (self.m - w0) / np.linalg.norm(self.m - w0)
 
         self.basis = np.vstack((v1, v2)).T
         self.w_hat = w0
-
 
     def get_space(self):
         return self.basis, self.w_hat

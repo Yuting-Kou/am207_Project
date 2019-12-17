@@ -1,6 +1,6 @@
 from IPython.display import HTML
 from autograd import numpy as np
-
+import copy
 
 def hidecode():
     return HTML('''<script>
@@ -56,4 +56,5 @@ def get_initialization(net, loader, optimizer, criterion, train_params, init_typ
         if callback != 0 and epoch % callback == 0:
             print('[epoch %d] loss: %.3f' %
                   (epoch + 1, running_loss / callback/len(loader)))
-    return net.state_dict()
+    #print(net.state_dict())
+    return copy.deepcopy(net.state_dict())
