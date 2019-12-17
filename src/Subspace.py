@@ -3,7 +3,7 @@ from abc import ABC
 from autograd import numpy as np
 from sklearn.utils.extmath import randomized_svd
 
-from .SWA import SWA
+from SWA import SWA
 
 
 class Subspace(ABC):

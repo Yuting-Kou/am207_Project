@@ -77,7 +77,8 @@ class CurveSpace(Subspace):
         if self.curve_net is None:
             self.endpoint = self.get_endpoint()
         self.midpoint = self.get_midpoint(self.endpoint)
-        e1, e2 = self.flatten_weights(self.endpoint[0]), self.flatten_weights(self.endpoint[1])
+        e1 = self.flatten_weights(self.endpoint[0])
+        e2 = self.flatten_weights(self.endpoint[1])
         m = self.flatten_weights(self.midpoint)
 
         w0 = (e1+e2)/2
@@ -92,7 +93,7 @@ class CurveSpace(Subspace):
         return self.basis, self.w_hat
 
     @staticmethod
-    def flatten_weights(self, para):
+    def flatten_weights(para):
         w = np.array([])
         for val in para.values():
             w = np.append(w, val.numpy().flatten())
