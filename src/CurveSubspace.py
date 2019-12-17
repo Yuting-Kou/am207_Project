@@ -43,14 +43,14 @@ class CurveSpace(Subspace):
                                                     self.params_base, i))
         return endpoint
 
-    def get_midpoint(self, endpoint):
+    def get_midpoint(self, endpoint, callback):
         w1, w2 = endpoint[0], endpoint[1]
         if self.curve_net is None:
             self.curve_net = self.curve_net_gen(w1, w2)
 
         opt = optim.Adam(self.curve_net.parameters(), lr = 0.001)
 
-        callback = 10
+        #callback = 10
         for epoch in range(self.params_curve['epochs']):
 
             running_loss = 0
@@ -73,10 +73,13 @@ class CurveSpace(Subspace):
                       (epoch + 1, running_loss / callback / len(self.loader)))
         return self.curve_net.state_dict()
 
-    def collect_vector(self, X = None, y = None):
+    def collect_vector(self, X = None, y = None, callback = 0):
+        '''
+        :param callback: printing frequency
+        '''
         if self.curve_net is None:
             self.endpoint = self.get_endpoint()
-        self.midpoint = self.get_midpoint(self.endpoint)
+        self.midpoint = self.get_midpoint(self.endpoint, callback)
         e1 = self.flatten_weights(self.endpoint[0])
         e2 = self.flatten_weights(self.endpoint[1])
         m = self.flatten_weights(self.midpoint)
