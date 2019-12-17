@@ -9,46 +9,49 @@ import util
 
 @Subspace.register_subclass('curve')
 class CurveSpace(Subspace):
-    def __init__(self, net, loader, train_params, optimizer, criterion, n_parameters,
-                 curve_net_gen, curve_params):
+    def __init__(self, net, loader, params_base, optimizer, criterion,
+                 curve_net_gen, params_curve):
         """
         Generate basis of curve subspace
         :param net: BaseNet
         :param loader:
-        :param train_params: epochs
+        :param params_base: epochs
         :param optimizer:
         :param criterion:
         :param n_parameters:
         :param curve_net_gen: class of CurveNet
-        :param curve_params: epochs, sample_size
+        :param params_curve: epochs, sample_size
         """
         self.net = net
-        self.n_parameters = n_parameters
-        self.train_params = train_params
+        #self.n_parameters = n_parameters
+        self.params_base = params_base
         self.optimizer = optimizer
         self.criterion = criterion
         self.loader = loader
 
         self.curve_net_gen = curve_net_gen
-        self.curve_params = curve_params
+        self.params_curve = params_curve
+        self.curve_net = None
         #self.curve_optimizer = curve_optimizer
 
     def get_endpoint(self):
         endpoint = []
 
         for i in range(2):
-            endpoint.append(util.get_initialization(i, self.net, self.loader,
+            endpoint.append(util.get_initialization(self.net, self.loader,
                                                     self.optimizer, self.criterion,
-                                                    self.train_params))
+                                                    self.params_base, i))
         return endpoint
 
     def get_midpoint(self, endpoint):
         w1, w2 = endpoint[0], endpoint[1]
-        self.curve_net = self.curve_net_gen(w1, w2)
+        if self.curve_net is None:
+            self.curve_net = self.curve_net_gen(w1, w2)
 
         opt = optim.Adam(self.curve_net.parameters(), lr = 0.001)
 
-        for epoch in range(self.curve_params['epochs']):
+        callback = 10
+        for epoch in range(self.params_curve['epochs']):
 
             running_loss = 0
             for i, data in enumerate(self.loader, 0):
@@ -56,25 +59,44 @@ class CurveSpace(Subspace):
 
                 opt.zero_grad()
                 loss = 0
-                for k in range(self.curve_params['sample_size']):
+                for k in range(self.params_curve['sample_size']):
                     outputs = self.curve_net(X)
                     loss += self.criterion(outputs, y)
-                loss /= self.curve_params['sample_size']
+                loss /= self.params_curve['sample_size']
 
                 loss.backward()
                 opt.step()
 
                 running_loss += loss
-                if i % 2000 == 1999:
-                    print('[%d, %5d] loss: %.3f' %
-                          (epoch + 1, i + 1, running_loss / 2000))
-                    running_loss = 0.0
+            if epoch % callback == 0:
+                print('[epoch %d] loss: %.3f' %
+                      (epoch + 1, running_loss / callback / len(self.loader)))
         return self.curve_net.state_dict()
 
+    def collect_vector(self, X = None, y = None):
+        if self.curve_net is None:
+            self.endpoint = self.get_endpoint()
+        self.midpoint = self.get_midpoint(self.endpoint)
+        e1, e2 = self.flatten_weights(self.endpoint[0]), self.flatten_weights(self.endpoint[1])
+        m = self.flatten_weights(self.midpoint)
+
+        w0 = (e1+e2)/2
+        v1 = (e1 - w0) / np.linalg.norm(e1-w0)
+        v2 = (m - w0) / np.linalg.norm(m-w0)
+
+        self.basis = np.vstack((v1, v2)).T
+        self.w_hat = w0
+
+
     def get_space(self):
-        endpoint = self.get_endpoint()
-        midpoint = self.get_midpoint(endpoint)
-        return endpoint.append(midpoint)
+        return self.basis, self.w_hat
+
+    @staticmethod
+    def flatten_weights(self, para):
+        w = np.array([])
+        for val in para.values():
+            w = np.append(w, val.numpy().flatten())
+        return w
 
 
 class Linear(nn.Module):
@@ -216,16 +238,43 @@ class Conv2d(nn.Module):
                         self.padding, self.dilation, self.groups)
 
 
+"""Example base net class"""
+class BaseNet(nn.Module):
+    def __init__(self, input_size, width, hidden_layer=1):
+        super(BaseNet, self).__init__()
+        self.layers = nn.ModuleList()
+        self.layers.append(nn.Linear(input_size, width))
+        for i in range(hidden_layer - 1):
+            self.layers.append(nn.Linear(width, width))
+        self.layers.append(nn.Linear(width, 1))
+
+    def forward(self, x):
+        for layer in self.layers[:-1]:
+            x = F.relu(layer(x))
+        x = self.layers[-1](x)
+        return x
+
 """Example curve net class"""
 class CurveNet(nn.Module):
-    def __init__(self, net, start_point, end_point):
+    def __init__(self, input_size, width, hidden_layer, start_point, end_point):
         super(CurveNet, self).__init__()
-        self.net = net
-        self.start_point = start_point
-        self.end_point = end_point
+        self.layers = nn.ModuleList()
 
-    def forward(self, input, t = None):
+        def get_weight(i):
+            coeff = names[int(2 * i)]
+            bias = names[int(2 * i) + 1]
+            return [start_point[coeff], start_point[bias]], [end_point[coeff], end_point[bias]]
+
+        names = list(start_point.keys())
+        self.layers.append(Linear(input_size, width, *get_weight(0)))
+        for i in range(hidden_layer - 1):
+            self.layers.append(Linear(width, width, *get_weight(i + 1)))
+        self.layers.append(Linear(width, 1, *get_weight(hidden_layer)))
+
+    def forward(self, x, t=None):
         if t is None:
-            t = input.data.new(1).uniform_()
-        output = self.net(input, t)
-        return output
+            t = x.data.new(1).uniform_()
+        for layer in self.layers[:-1]:
+            x = F.relu(layer(x, t))
+        x = self.layers[-1](x, t)
+        return x
