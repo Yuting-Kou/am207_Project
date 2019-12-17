@@ -47,7 +47,6 @@ class Inference(ABC):
         """return log likelihood of prior distribution."""
         D = self.P.shape[1]
         assert len(z.shape) == 2 and z.shape[1] == D
-        # print('log prior, zshape: -1,D_z',z.shape)
         constant_W = -0.5 * (D * np.log(2 * np.pi) + np.log(self.Sigma_Z_det))
         exponential_W = -0.5 * np.diag(np.dot(np.dot(z - self.Mean_Z, self.Sigma_Z_inv), (z - self.Mean_Z).T))
         assert exponential_W.shape == (len(z),)  # S
@@ -176,7 +175,6 @@ class BBB(Inference):
         # make sure X is in the correct shape: (D_in, -1)
         X = X.reshape(self.model.params['D_in'], -1)
         y = y.reshape(1, self.model.params['D_out'], -1)
-        # print('X.shape in BBB train', X.shape)
 
         self.log_density = lambda z, t: self.model.get_likelihood(X=X, y=y, z=z, P=self.P, w_hat=self.w_hat) \
                                         + self.log_prior(z).reshape(-1, 1)
@@ -191,9 +189,9 @@ class BBB(Inference):
         if verbose is not None:
             self.tune_params['verbose'] = verbose
         if position_init is not None:
-            self.tune_params['position_init'] = position_init.reshape(self.D_z, )
+            self.tune_params['position_init'] = position_init
         if init_var is not None:
-            self.tune_params['init_var'] = init_var.reshape(self.D_z, )
+            self.tune_params['init_var'] = init_var
         if checkpoint is not None:
             self.tune_params['checkpoint'] = checkpoint
 
@@ -291,15 +289,21 @@ class BBB(Inference):
             mean, var = unpack_params(params)
             self.variational_params = np.vstack((self.variational_params, np.hstack((mean, var)).reshape((1, -1))))
             if self.tune_params['verbose'] and iteration % self.tune_params['checkpoint'] == 0:
-                print(params)
                 print("Iteration {} lower bound {}; gradient mag: {}".format(iteration, elbo, np.linalg.norm(
                     gradient(params, iteration))))
 
         # initialize variational parameters
         if self.tune_params['position_init'] is None:
             self.tune_params['position_init'] = self.random.normal(0, 0.1, size=self.D_z)
+        else:
+            self.tune_params['position_init']= self.tune_params['position_init'].reshape(self.D_z,)
         if self.tune_params['init_var'] is None:
             self.tune_params['init_var'] = self.random.normal(0, 0.1, size=self.D_z)
+        elif isinstance(self.tune_params['init_var'], int) or isinstance(self.tune_params['init_var'], float):
+            self.tune_params['init_var'] = np.ones(self.D_z) * self.tune_params['init_var']
+        else:
+            self.tune_params['init_var']= self.tune_params['init_var'].reshape(self.D_z,)
+
         init_params = np.concatenate([self.tune_params['position_init'], self.tune_params['init_var']])
         assert len(init_params) == 2 * self.D_z
 

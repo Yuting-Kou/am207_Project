@@ -62,7 +62,7 @@ class RandomSpace(Subspace):
     def get_space(self):
         """
         :return:
-            subspace: projection matrix with shape [p_small, p_large]
+            subspace: projection matrix with shape [p_large, p_small]
             w_hat: shift vectors = w_{SWA}
         """
         return self.subspace, self.w_hat

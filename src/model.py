@@ -170,11 +170,11 @@ class Feedforward(Model):
         if Sigma_Y is None:
             Sigma_Y = np.eye(self.params['D_out'])
         else:
-            if len(Sigma_Y.shape) > 1:
-                assert Sigma_Y.shape[0] == Sigma_Y.shape[1] == self.params['D_out']
+            if isinstance(Sigma_Y, int) or isinstance(Sigma_Y, float):
+                # if sigma_Z is a number, turn it into (1,1)
+                Sigma_Y = np.eye((self.params['D_out'])) * Sigma_Y
             else:
-                # if sigma_Y is a number, turn it into (1,1)
-                Sigma_Y = np.copy(Sigma_Y).reshape(1, 1)
+                assert Sigma_Y.shape[0] == Sigma_Y.shape[1] == self.params['D_out']
         self.Sigma_Y_inv = np.linalg.inv(Sigma_Y)
         self.Sigma_Y_det = np.linalg.det(Sigma_Y)
 
