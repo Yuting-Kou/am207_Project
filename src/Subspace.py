@@ -53,7 +53,7 @@ class RandomSpace(Subspace):
         self.model = model
         self.w_hat = np.zeros((self.n_parameters, 1))
         
-    def collect_vector(self, X, y, method="T", lr = 0.02, T = 2000, c = 10, max_rank = 10):
+    def collect_vector(self, X, y, method="T", lr = 0.01, T = 4000, c = 10, max_rank = 10):
         """set shift vector as SWA results
         params info see SWA.py"""
         self.myswag = SWA(self.model, X, y, method, lr, T, c, max_rank)
@@ -85,7 +85,7 @@ class PCASpace(Subspace):
         self.w_hat = np.zeros((self.n_parameters, 1))
 
 
-    def collect_vector(self, X, y, method="T", lr = 0.02, T = 2000, c = 10, max_rank = 10):
+    def collect_vector(self, X, y, method="T", lr = 0.01, T = 4000, c = 10, max_rank = 10):
         """set shift vector as SWA results
         params info see SWA.py"""
         self.myswag = SWA(self.model, X, y, method, lr, T, c, max_rank)
