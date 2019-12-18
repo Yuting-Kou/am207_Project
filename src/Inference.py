@@ -570,6 +570,12 @@ class HMC(Inference):
                 accept_rate = self.accepts * 100. / i
                 print('HMC {}: accept rate of {}'.format(i, accept_rate))
 
+                # update accept_rate
+                if accept_rate < 0.5:
+                    self.tune_params['step_size'] -= (0.5 - float(self.alpha)) * 0.005  # *= 0.95
+                if accept_rate > 0.8:
+                    self.tune_params['step_size'] += (float(self.alpha) - 0.7) * 0.005  # *= 1.05
+
             position_current, momentum_current = self.hmc(position_current)
 
             # add sample to trace
