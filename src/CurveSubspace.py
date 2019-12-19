@@ -75,12 +75,12 @@ class CurveSpace(Subspace):
             cnt += length
         return res
 
-    def train_midpoint(self, endpoint, epochs, callback):
+    def train_midpoint(self, endpoint, epochs, lr, callback):
         w1, w2 = endpoint[0], endpoint[1]
         if self.curve_net is None:
             self.curve_net = self.curve_net_gen(w1, w2)
 
-        opt = optim.Adam(self.curve_net.parameters(), lr = 0.001)
+        opt = optim.Adam(self.curve_net.parameters(), lr = lr)
 
         #callback = 10
         for epoch in range(epochs):
@@ -104,7 +104,7 @@ class CurveSpace(Subspace):
                 print('[epoch %d] loss: %.3f' %
                       (epoch + 1, running_loss / callback / len(self.loader)))
 
-    def collect_vector(self, epochs, X = None, y = None, restart = False, callback = 0):
+    def collect_vector(self, epochs, lr = 0.001, X = None, y = None, restart = False, callback = 0):
         """
         :param epochs: for training midpoint
         :param X:
@@ -115,11 +115,12 @@ class CurveSpace(Subspace):
         """
         if self.curve_net is None or restart:
             self.endpoint = self.get_endpoint()
-        self.train_midpoint(self.endpoint, epochs, callback)
+        self.train_midpoint(self.endpoint, epochs, lr, callback)
 
         self.e1 = self.flatten_weights(self.endpoint[0])
         self.e2 = self.flatten_weights(self.endpoint[1])
         self.m = self.flatten_weights(self.curve_net.state_dict())
+        #self.m = self.flatten_weights(self.endpoint[2])
 
         w0 = (self.e1 + self.e2) / 2
         v1 = (self.e1 - w0) / np.linalg.norm(self.e1 - w0)
