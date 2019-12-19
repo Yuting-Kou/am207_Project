@@ -329,19 +329,19 @@ class Feedforward(Model):
             self.check_point = params['check_point']
         if 'init' in params.keys():
             weights_init = params['init']
-        if 'call_back' in params.keys():
-            call_back = params['call_back']
         if 'optimizer' in params.keys():
             optimizer = params['optimizer']
         if 'random_restarts' in params.keys():
             random_restarts = params['random_restarts']
+        if 'check_point' in params.keys():
+            check_point = params['check_point']
 
         def call_back(weights, iteration, g):
             ''' Actions per optimization step '''
             objective = self.objective(weights, iteration)
             self.objective_trace = np.vstack((self.objective_trace, objective))
             self.weight_trace = np.vstack((self.weight_trace, weights))
-            if iteration % check_point == 0:
+            if check_point != 0 and iteration % check_point == 0:
                 print("Iteration {} lower bound {}; gradient mag: {}".format(iteration, objective, np.linalg.norm(
                     self.gradient(weights, iteration))))
 

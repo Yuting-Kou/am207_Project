@@ -1,4 +1,5 @@
 from Subspace import Subspace
+from model import Model
 import torch.nn as nn
 import torch
 import numpy as np
@@ -6,11 +7,12 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.modules.utils import _pair
 import util
+from collections import OrderedDict
 
 @Subspace.register_subclass('curve')
 class CurveSpace(Subspace):
-    def __init__(self, net, loader, params_base, optimizer, criterion,
-                 curve_net_gen, params_curve):
+    def __init__(self, curve_net_gen, params_curve, loader, criterion,
+                 nn=None, net=None, **kwargs):
         """
         Generate basis of curve subspace
         :param net: BaseNet
@@ -22,26 +24,56 @@ class CurveSpace(Subspace):
         :param curve_net_gen: class of CurveNet
         :param params_curve: epochs, sample_size
         """
-        self.net = net
-        #self.n_parameters = n_parameters
-        self.params_base = params_base
-        self.optimizer = optimizer
-        self.criterion = criterion
-        self.loader = loader
+        self.base_type = -1
 
+        if nn is not None:
+            self.nn = nn
+            self.params_base = kwargs['params_base']
+            self.X = kwargs['X']
+            self.y = kwargs['y']
+            self.base_type = 0
+        else:
+            self.params_base = kwargs['params_base']
+            self.optimizer = kwargs['optimizer']
+            self.base_type = 1
+
+        self.net = net
+        self.loader = loader
+        self.criterion = criterion
         self.curve_net_gen = curve_net_gen
         self.params_curve = params_curve
         self.curve_net = None
-        #self.curve_optimizer = curve_optimizer
 
     def get_endpoint(self, callback = 0):
         endpoint = []
 
-        for i in range(2):
-            endpoint.append(util.get_initialization(self.net, self.loader,
-                                                    self.optimizer, self.criterion,
-                                                    self.params_base, i, callback))
+        if self.base_type == 0:
+            self.params_base['callback'] = callback
+            self.params_base['check_point'] = callback
+            for i in range(2):
+                self.nn.weights = np.random.normal(0, 1, size=self.nn.weights.shape)
+                self.nn.fit(x_train=self.X.reshape((1, -1)), y_train=self.y.reshape((1, -1)),
+                            params=self.params_base)
+                #print()
+                endpoint.append(self.copy_weight(self.nn.weights.flatten().copy()))
+        else:
+            for i in range(2):
+                endpoint.append(util.get_initialization(self.net, self.loader,
+                                                        self.optimizer, self.criterion,
+                                                        self.params_base, i, callback))
         return endpoint
+
+    def copy_weight(self, w):
+        res = OrderedDict()
+        cnt = 0
+        for key, val in self.net.state_dict().items():
+            if val.dim() == 1:
+                length = len(val)
+            else:
+                length = len(val.squeeze())
+            res[key] = torch.Tensor(w[cnt:cnt+length].reshape(val.shape))
+            cnt += length
+        return res
 
     def train_midpoint(self, endpoint, epochs, callback):
         w1, w2 = endpoint[0], endpoint[1]
@@ -258,7 +290,7 @@ class BaseNet(nn.Module):
 
     def forward(self, x):
         for layer in self.layers[:-1]:
-            x = F.relu(layer(x))
+            x = torch.exp(-layer(x)**2)
         x = self.layers[-1](x)
         return x
 
@@ -283,6 +315,6 @@ class CurveNet(nn.Module):
         if t is None:
             t = x.data.new(1).uniform_()
         for layer in self.layers[:-1]:
-            x = F.relu(layer(x, t))
+            x = torch.exp(-layer(x, t)**2)
         x = self.layers[-1](x, t)
         return x
