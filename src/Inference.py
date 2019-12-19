@@ -32,15 +32,13 @@ class Inference(ABC):
 
     def get_posterior_likelihood(self, z, X, y):
         """
-        return `n_samples` log likelihood of data. P(W|D). Use MC estimates
+        return `n_samples` log likelihood of data. P(z|D). Use MC estimates
         """
         X = X.reshape(self.model.params['D_in'], -1)
         y = y.reshape(1, self.model.params['D_out'], -1)
         log_lk = self.model.get_likelihood(X=X, y=y, use_subweights=True, z=z, P=self.P, w_hat=self.w_hat)
-        print(log_lk.shape)
         log_prior = self.log_prior(z)
-        print(log_prior.shape)
-        return np.mean(log_prior+log_lk)
+        return log_prior+log_lk
 
 
     def train(self, X, y, warm_start=False):
